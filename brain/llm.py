@@ -19,19 +19,26 @@ CPU_THREADS = max(4, os.cpu_count() or 4)
 SYSTEM_PROMPT = """You are ULTRON GENESIS, a local Windows desktop assistant.
 Address the user as Founder.
 Be concise, direct, useful, and natural.
-User input may come from speech recognition and can contain small spelling, grammar, punctuation, or transcription errors.
-Silently infer the intended wording and intent. Do not mention the correction.
+Speech input can contain obvious transcription or grammar errors; silently infer intent.
+Do not mention corrections.
 Do not reveal private chain-of-thought.
-Prefer short answers unless the user asks for detail.
+For normal conversation, answer in at most 2 short sentences unless the user asks for detail.
 """
 
-
 _SESSION = requests.Session()
+_OLLAMA_READY = False
+_INSTALLED_MODELS: set[str] | None = None
 
 
 def ensure_ollama() -> None:
+    global _OLLAMA_READY
+
+    if _OLLAMA_READY:
+        return
+
     try:
-        _SESSION.get(f"{BASE_URL}/api/tags", timeout=1.2)
+        _SESSION.get(f"{BASE_URL}/api/tags", timeout=1.0)
+        _OLLAMA_READY = True
         return
     except requests.RequestException:
         pass
@@ -49,23 +56,30 @@ def ensure_ollama() -> None:
 
     for _ in range(30):
         try:
-            _SESSION.get(f"{BASE_URL}/api/tags", timeout=0.8)
+            _SESSION.get(f"{BASE_URL}/api/tags", timeout=0.7)
+            _OLLAMA_READY = True
             return
         except requests.RequestException:
-            time.sleep(0.3)
+            time.sleep(0.25)
 
     raise RuntimeError("Ollama did not become available on 127.0.0.1:11434")
 
 
-def installed_models() -> set[str]:
+def installed_models(refresh: bool = False) -> set[str]:
+    global _INSTALLED_MODELS
+
     ensure_ollama()
-    response = _SESSION.get(f"{BASE_URL}/api/tags", timeout=5)
+    if _INSTALLED_MODELS is not None and not refresh:
+        return _INSTALLED_MODELS
+
+    response = _SESSION.get(f"{BASE_URL}/api/tags", timeout=4)
     response.raise_for_status()
-    return {
+    _INSTALLED_MODELS = {
         item.get("name", "")
         for item in response.json().get("models", [])
         if item.get("name")
     }
+    return _INSTALLED_MODELS
 
 
 def choose_model(preferred: str) -> str:
@@ -74,8 +88,9 @@ def choose_model(preferred: str) -> str:
     if preferred in models:
         return preferred
 
-    if preferred == AGENT_MODEL and FAST_MODEL in models:
-        return FAST_MODEL
+    if preferred == AGENT_MODEL:
+        if FAST_MODEL in models:
+            return FAST_MODEL
 
     if preferred == HEAVY_MODEL and MID_MODEL in models:
         return MID_MODEL
@@ -100,22 +115,25 @@ def _payload_options(
     num_ctx: int,
 ) -> dict[str, Any]:
     if model == HEAVY_MODEL:
-        threads = CPU_THREADS
-        batch = 128
-        temperature = 0.15
-    else:
-        threads = CPU_THREADS
-        batch = 96
-        temperature = 0.1
+        return {
+            "temperature": 0.15,
+            "top_p": 0.85,
+            "top_k": 30,
+            "num_ctx": num_ctx,
+            "num_predict": max_output_tokens,
+            "num_thread": CPU_THREADS,
+            "num_batch": 128,
+            "num_gpu": 0,
+        }
 
     return {
-        "temperature": temperature,
-        "top_p": 0.85,
-        "top_k": 30,
+        "temperature": 0.1,
+        "top_p": 0.8,
+        "top_k": 20,
         "num_ctx": num_ctx,
         "num_predict": max_output_tokens,
-        "num_thread": threads,
-        "num_batch": batch,
+        "num_thread": CPU_THREADS,
+        "num_batch": 128,
         "num_gpu": 0,
     }
 
@@ -124,7 +142,7 @@ def _keep_alive(model: str) -> str:
     if model in {AGENT_MODEL, FAST_MODEL}:
         return "90m"
     if model == MID_MODEL:
-        return "20m"
+        return "15m"
     return "10m"
 
 
@@ -138,7 +156,7 @@ def warm_model(model: str = FAST_MODEL) -> str:
             "stream": False,
             "think": False,
             "keep_alive": _keep_alive(selected),
-            "options": _payload_options(selected, 1, 512),
+            "options": _payload_options(selected, 1, 384),
         },
         timeout=120,
     )
@@ -147,22 +165,28 @@ def warm_model(model: str = FAST_MODEL) -> str:
 
 
 def warm_speed_stack() -> tuple[str, str]:
-    # Operator and conversation agents share the same fast model.
+    # Warm the fast model once. The tiny operator model is optional and can
+    # be warmed separately if present, but never blocks normal startup.
     fast = warm_model(FAST_MODEL)
     return fast, fast
 
 
+def _messages(
+    history: list[dict[str, str]],
+    system: str,
+) -> list[dict[str, str]]:
+    return [{"role": "system", "content": system}, *history]
+
+
 def chat(
     history: list[dict[str, str]],
-    timeout: int = 90,
+    timeout: int = 60,
     system_extra: str = "",
     model: str | None = None,
-    max_output_tokens: int = 96,
-    num_ctx: int = 1024,
+    max_output_tokens: int = 72,
+    num_ctx: int = 768,
 ) -> str:
     selected_model = choose_model(model or FAST_MODEL)
-    ensure_ollama()
-
     system = SYSTEM_PROMPT
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
@@ -171,10 +195,7 @@ def chat(
         URL,
         json={
             "model": selected_model,
-            "messages": [
-                {"role": "system", "content": system},
-                *history,
-            ],
+            "messages": _messages(history, system),
             "stream": False,
             "think": False,
             "keep_alive": _keep_alive(selected_model),
@@ -188,8 +209,7 @@ def chat(
     )
     response.raise_for_status()
 
-    data: dict[str, Any] = response.json()
-    content = data.get("message", {}).get("content")
+    content = response.json().get("message", {}).get("content")
     if not isinstance(content, str):
         raise RuntimeError("Ollama returned an invalid response.")
     return content.strip()
@@ -197,15 +217,13 @@ def chat(
 
 def stream_chat(
     history: list[dict[str, str]],
-    timeout: int = 90,
+    timeout: int = 60,
     system_extra: str = "",
     model: str | None = None,
-    max_output_tokens: int = 96,
-    num_ctx: int = 1024,
+    max_output_tokens: int = 72,
+    num_ctx: int = 768,
 ) -> Iterator[str]:
     selected_model = choose_model(model or FAST_MODEL)
-    ensure_ollama()
-
     system = SYSTEM_PROMPT
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
@@ -214,10 +232,7 @@ def stream_chat(
         URL,
         json={
             "model": selected_model,
-            "messages": [
-                {"role": "system", "content": system},
-                *history,
-            ],
+            "messages": _messages(history, system),
             "stream": True,
             "think": False,
             "keep_alive": _keep_alive(selected_model),
@@ -227,7 +242,7 @@ def stream_chat(
                 num_ctx,
             ),
         },
-        timeout=(2.5, timeout),
+        timeout=(1.5, timeout),
         stream=True,
     )
     response.raise_for_status()
@@ -239,6 +254,7 @@ def stream_chat(
             data = json.loads(line)
             if data.get("done"):
                 break
+
             token = data.get("message", {}).get("content")
             if isinstance(token, str) and token:
                 yield token
