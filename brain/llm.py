@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 
-FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:3b")
+FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
 BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
@@ -99,7 +99,7 @@ def chat(
     timeout: int = 120,
     system_extra: str = "",
     model: str | None = None,
-    max_output_tokens: int = 160,
+    max_output_tokens: int = 128,
 ) -> str:
     selected_model = choose_model(model or FAST_MODEL)
     ensure_ollama()
@@ -124,7 +124,7 @@ def chat(
             "options": {
                 "num_predict": max_output_tokens,
                 "temperature": 0.2,
-                "num_ctx": 4096,
+                "num_ctx": 2048,
             },
         },
         timeout=timeout,
