@@ -40,16 +40,6 @@ def reset_memory() -> None:
     _save()
 
 
-QUICK_REPLIES = {
-    "hi": "Hello, Founder. I am online.",
-    "hello": "Hello, Founder. I am online.",
-    "hey": "Hey, Founder. ULTRON is online.",
-    "good morning": "Good morning, Founder.",
-    "good night": "Good night, Founder.",
-    "thanks": "Always, Founder.",
-    "thank you": "Always, Founder.",
-}
-
 def ask(prompt: str) -> str:
     prompt = prompt.strip()
     if not prompt:
