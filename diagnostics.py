@@ -24,7 +24,7 @@ def main() -> int:
     results.append(check("Python", lambda: sys.version.split()[0]))
     results.append(check("PySide6", lambda: __import__("PySide6").__version__))
     results.append(check("PyAutoGUI", lambda: __import__("pyautogui").__version__))
-    results.append(check("Vosk", lambda: "installed"))
+    results.append(check("Whisper.cpp", lambda: __import__("pywhispercpp").__name__))
     results.append(check("Piper TTS", lambda: __import__("piper").__name__))
 
     def graph_file():
