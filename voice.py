@@ -287,3 +287,54 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
         finally:
             stream.stop()
             stream.close()
+
+
+def speak_streaming(
+    incoming: queue.Queue[str | None],
+    stop_event: threading.Event,
+    started_callback=None,
+) -> None:
+    """Speak complete sentences as they arrive from the streaming LLM."""
+    buffer = ""
+
+    def emit_sentence(sentence: str) -> None:
+        clean = sentence.strip()
+        if not clean or stop_event.is_set():
+            return
+        if started_callback is not None:
+            started_callback()
+        for audio in speech_model.synthesize(clean):
+            if stop_event.is_set():
+                return
+            stream.write(audio.audio_int16_bytes)
+
+    with _speech_lock:
+        stream = sd.RawOutputStream(
+            samplerate=speech_model.config.sample_rate,
+            channels=1,
+            dtype="int16",
+            latency="low",
+        )
+        stream.start()
+        try:
+            while not stop_event.is_set():
+                item = incoming.get()
+                if item is None:
+                    if buffer.strip():
+                        emit_sentence(buffer)
+                    break
+
+                buffer += item
+
+                while True:
+                    match = re.search(r"(?<=[.!?])(?:\s+|$)", buffer)
+                    if not match:
+                        break
+                    sentence = buffer[:match.end()]
+                    buffer = buffer[match.end():]
+                    emit_sentence(sentence)
+                    if stop_event.is_set():
+                        break
+        finally:
+            stream.stop()
+            stream.close()
