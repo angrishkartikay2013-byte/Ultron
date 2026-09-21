@@ -187,6 +187,8 @@ class GenesisOrb(QWidget):
         self.chat_window = None
         self._interrupt_down = False
         self._typing_token = 0
+        self._active_prompt = ""
+        self._response_text = ""
 
         screen = QApplication.primaryScreen()
         if screen:
@@ -268,7 +270,9 @@ class GenesisOrb(QWidget):
         self.stop_voice()
         self.show_popup()
         self.set_state("thinking")
-        self.popup.text.setText(f"Founder: {prompt}\n\nULTRON is responding…")
+        self._active_prompt = prompt
+        self._response_text = ""
+        self.popup.text.setText(f"Founder: {prompt}\n\nULTRON:")
 
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
@@ -284,15 +288,10 @@ class GenesisOrb(QWidget):
     def reply_chunk(self, token: str) -> None:
         if not self.popup:
             return
-        if self.state == "thinking":
-            self.set_state("thinking")
-        existing = self.popup.text.text()
-        prefix = existing.split("\n\nULTRON:", 1)[0]
-        if "\n\nULTRON:" not in existing:
-            prefix = existing
-            self.popup.text.setText(prefix + "\n\nULTRON:")
-            existing = self.popup.text.text()
-        self.popup.text.setText(self.popup.text.text() + token)
+        self._response_text += token
+        self.popup.text.setText(
+            f"Founder: {self._active_prompt}\n\nULTRON:\n{self._response_text}"
+        )
         self.popup.adjustSize()
 
     def reply_ready(self, text: str) -> None:
