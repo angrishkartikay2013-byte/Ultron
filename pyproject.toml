@@ -1,0 +1,14 @@
+[project]
+name = "ultron"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pyautogui>=0.9.54",
+    "pyopengl>=3.1.10",
+    "pyside6>=6.11.2",
+    "requests>=2.34.2",
+    "sounddevice>=0.5.6",
+    "vosk>=0.3.45",
+]
