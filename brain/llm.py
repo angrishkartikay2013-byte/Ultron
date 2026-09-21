@@ -48,11 +48,19 @@ def ensure_ollama() -> None:
     raise RuntimeError("Ollama did not become available on 127.0.0.1:11434")
 
 
-def chat(history: list[dict[str, str]], timeout: int = 180) -> str:
+def chat(
+    history: list[dict[str, str]],
+    timeout: int = 180,
+    system_extra: str = "",
+) -> str:
     ensure_ollama()
 
+    system = SYSTEM_PROMPT
+    if system_extra.strip():
+        system += "\n\n" + system_extra.strip()
+
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         *history,
     ]
 
