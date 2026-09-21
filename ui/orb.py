@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from brain.agent import handle_prompt
+from brain.llm import FAST_MODEL, warm_model
 from voice import listen_once, speak
 
 
@@ -411,7 +412,20 @@ class GenesisOrb(QWidget):
 
 def run_genesis() -> int:
     app = QApplication.instance() or QApplication([])
+    threading.Thread(
+        target=lambda: _warm_fast_model(),
+        daemon=True,
+        name="ULTRON-fast-model-warmup",
+    ).start()
     orb = GenesisOrb()
     orb.show()
     app.aboutToQuit.connect(orb.close)
     return app.exec()
+
+
+def _warm_fast_model() -> None:
+    try:
+        warm_model(FAST_MODEL)
+    except Exception:
+        # The first real request will surface any model/runtime problem.
+        pass
