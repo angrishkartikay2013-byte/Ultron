@@ -1,80 +1,80 @@
+from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication,QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QLabel,QFrame
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
 
-from graph_widget import MemoryGraph
-from sidebar import MemoryVault
+from .graph_widget import MemoryGraph
+from .sidebar import MemoryVault
 
-class Genesis(QMainWindow):
 
-    def __init__(self):
+class GenesisMemory(QMainWindow):
+    def __init__(self) -> None:
         super().__init__()
+        self.setWindowTitle("ULTRON GENESIS • Memory Galaxy")
+        self.resize(1500, 900)
+        self.setMinimumSize(1000, 650)
 
-        self.setWindowTitle("ULTRON GENESIS v0.2.0 Alpha")
-
-        self.resize(1500,900)
-
-        self.setStyleSheet("""
-            QMainWindow{
-                background:#040816;
-            }
-
-            QLabel{
-                color:white;
-            }
-        """)
-
-        root=QWidget()
+        root = QWidget()
         self.setCentralWidget(root)
 
-        layout=QVBoxLayout(root)
-        layout.setContentsMargins(0,0,0,0)
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        top=QFrame()
-        top.setFixedHeight(70)
+        header = QFrame()
+        header.setFixedHeight(68)
+        header.setStyleSheet(
+            "QFrame{background:#050b16;border-bottom:1px solid #123b5a;}"
+        )
 
-        top.setStyleSheet("""
-            background:#050B16;
-            border-bottom:1px solid #123B5A;
-        """)
+        bar = QHBoxLayout(header)
+        bar.setContentsMargins(24, 0, 24, 0)
 
-        bar=QHBoxLayout(top)
+        title = QLabel("ULTRON GENESIS")
+        title.setStyleSheet(
+            "color:#67e8f9;font-size:23px;font-weight:800;letter-spacing:1px;"
+        )
 
-        title=QLabel("ULTRON GENESIS")
-        title.setStyleSheet("""
-            color:#67E8F9;
-            font-size:24px;
-            font-weight:bold;
-        """)
+        subtitle = QLabel("MEMORY GALAXY")
+        subtitle.setStyleSheet("color:#64748b;font-size:11px;font-weight:700;")
 
-        status=QLabel("🧠 Brain Online")
+        status = QLabel("● BRAIN ONLINE")
         status.setAlignment(Qt.AlignRight)
-
-        status.setStyleSheet("""
-            color:#38BDF8;
-            font-size:12px;
-        """)
+        status.setStyleSheet("color:#55ffad;font-size:11px;font-weight:700;")
 
         bar.addWidget(title)
+        bar.addSpacing(16)
+        bar.addWidget(subtitle)
         bar.addStretch()
         bar.addWidget(status)
+        layout.addWidget(header)
 
-        layout.addWidget(top)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
-        body=QHBoxLayout()
+        self.sidebar = MemoryVault()
+        self.graph = MemoryGraph(self.sidebar.update_info)
 
-        self.sidebar=MemoryVault()
-
-        graph=MemoryGraph(self.sidebar.update_info)
-
-        body.addWidget(graph,4)
-        body.addWidget(self.sidebar,1)
-
+        body.addWidget(self.graph, 1)
+        body.addWidget(self.sidebar)
         layout.addLayout(body)
 
-app=QApplication([])
 
-window=Genesis()
-window.show()
+def open_memory_galaxy() -> GenesisMemory:
+    window = GenesisMemory()
+    window.show()
+    window.raise_()
+    window.activateWindow()
+    return window
 
-app.exec()
+
+def run_memory_galaxy() -> int:
+    app = QApplication.instance() or QApplication([])
+    window = open_memory_galaxy()
+    app.aboutToQuit.connect(window.close)
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_memory_galaxy())
