@@ -268,10 +268,10 @@ class GenesisOrb(QWidget):
         self.reply = ReplyWorker(prompt, self)
         self.reply.ready.connect(self.reply_ready)
         self.reply.failed.connect(self.reply_error)
+        self.reply.finished.connect(self.reply_finished)
         self.reply.start()
 
     def reply_ready(self, text: str) -> None:
-        self.reply = None
         self.messages.append(Message("ULTRON", text))
         self.set_state("speaking")
         self.type_reply(text)
@@ -329,6 +329,9 @@ class GenesisOrb(QWidget):
         if self.state == "speaking":
             self.set_state("idle")
 
+    def reply_finished(self) -> None:
+        self.reply = None
+
     def stop_voice(self) -> None:
         if self.voice and self.voice.isRunning():
             self.voice.stop()
@@ -344,7 +347,6 @@ class GenesisOrb(QWidget):
         self.popup.text.setText("Microphone error:\n" + message)
 
     def reply_error(self, message: str) -> None:
-        self.reply = None
         self.set_state("error")
         self.show_popup()
         self.popup.text.setText("Brain error:\n" + message)
