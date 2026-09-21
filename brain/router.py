@@ -38,6 +38,15 @@ _OPERATOR_TERMS = (
     "scroll ",
     "take a screenshot",
     "screenshot",
+    "look at my screen",
+    "look at the screen",
+    "see my screen",
+    "see the screen",
+    "what's on my screen",
+    "whats on my screen",
+    "find on screen",
+    "find on my screen",
+    "button on screen",
     "create a file",
     "make a file",
     "rename ",
@@ -88,5 +97,9 @@ def route_prompt(prompt: str) -> Route:
     if length > 90 or any(term in text for term in _MID_TERMS):
         return Route("reasoner", MID_MODEL, 128, 1024, 3)
 
-    # Normal conversation is intentionally tiny: short context + short output.
-    return Route("conversation", AGENT_MODEL, 64, 512, 1)
+    # Tiny reflex model handles very short conversational turns.
+    # The 1.5B fast brain handles normal conversation that needs more nuance.
+    if length <= 40:
+        return Route("conversation_reflex", AGENT_MODEL, 64, 512, 1)
+
+    return Route("conversation_fast", FAST_MODEL, 96, 768, 2)
