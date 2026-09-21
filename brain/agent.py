@@ -7,13 +7,14 @@ from typing import Any, Iterator
 from .cache import response_cache
 from .core import history, _save
 from .llm import chat, stream_chat
-from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, route_prompt
+from .router import AGENT_MODEL, MID_MODEL, route_prompt
 from tools.executor import execute
 from tools.registry import prompt_catalog
 
 
 ROUTER_PROMPT = """You are ULTRON's desktop operator.
-Input may be speech-recognized and contain obvious grammar, spelling, or transcription mistakes. Silently infer the intended command before routing it.
+Speech recognition can contain small transcription errors.
+Infer the intended command silently.
 Return exactly one JSON object and no markdown.
 
 Reply:
@@ -60,15 +61,18 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
         value = match.group(2).strip()
         if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
             value = value[1:-1]
+
         return [
             {"tool": "open_app", "arguments": {"app": app}},
-            {"tool": "wait", "arguments": {"seconds": 0.7}},
+            {"tool": "wait", "arguments": {"seconds": 0.5}},
             {"tool": "type_text", "arguments": {"text": value}},
         ]
 
     match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
     if match and len(text.split()) <= 8:
-        return [{"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}]
+        return [
+            {"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}
+        ]
 
     match = re.match(
         r"^(?:move|put)\s+(?:the\s+)?mouse\s+(?:to|at)\s+(.+)$",
@@ -77,7 +81,10 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     )
     if match:
         position = match.group(1).strip(" .")
-        coordinate = re.match(r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$", position)
+        coordinate = re.match(
+            r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$",
+            position,
+        )
         if coordinate:
             return [{
                 "tool": "mouse_move",
@@ -91,18 +98,22 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     return None
 
 
-def _model_context() -> list[dict[str, str]]:
-    return list(history[-8:])
+def _model_context(turns: int) -> list[dict[str, str]]:
+    return list(history[-turns * 2:])
 
 
-def _run_router(prompt: str, model: str, max_output_tokens: int = 180) -> tuple[dict[str, Any], str]:
-    context = _model_context() + [{"role": "user", "content": prompt}]
+def _run_router(
+    prompt: str,
+    model: str,
+    max_output_tokens: int = 64,
+) -> tuple[dict[str, Any], str]:
+    context = _model_context(1) + [{"role": "user", "content": prompt}]
     routed = chat(
         context,
         system_extra=_OPERATOR_PROMPT + prompt_catalog(),
         model=model,
         max_output_tokens=max_output_tokens,
-        num_ctx=1024,
+        num_ctx=640,
     )
     return _extract_json(routed), model
 
@@ -149,60 +160,76 @@ def handle_prompt(prompt: str) -> str:
     route = route_prompt(prompt)
 
     if route.agent == "operator":
-        try:
-            data, selected_model = _run_router(prompt, AGENT_MODEL, 96)
-        except Exception:
-            data, selected_model = _run_router(prompt, FAST_MODEL, 160)
-    else:
-        context = _model_context() + [{"role": "user", "content": prompt}]
-        response = chat(
-            context,
-            model=route.model,
-            max_output_tokens=route.max_output_tokens,
-            num_ctx=route.num_ctx,
-        )
+        data, selected_model = _run_router(prompt, route.model)
+        mode = data.get("mode")
+        response = str(data.get("response", "")).strip()
+        mission = data.get("mission", [])
+
+        if mode == "mission":
+            if not isinstance(mission, list) or not mission:
+                raise ValueError("Operator returned no mission.")
+
+            results = execute(mission)
+            failed = next((item for item in results if not item.get("ok")), None)
+
+            if failed:
+                # Repair only when necessary.
+                repair_context = _model_context(1) + [{
+                    "role": "user",
+                    "content": (
+                        prompt
+                        + "\nRepair the failed mission. Tool error: "
+                        + str(failed.get("error", "unknown error"))
+                    ),
+                }]
+                repaired = chat(
+                    repair_context,
+                    system_extra=_OPERATOR_PROMPT + prompt_catalog(),
+                    model=MID_MODEL,
+                    max_output_tokens=96,
+                    num_ctx=768,
+                )
+                repaired_data = _extract_json(repaired)
+                repaired_mission = repaired_data.get("mission", [])
+                if isinstance(repaired_mission, list) and repaired_mission:
+                    mission = repaired_mission
+                    response = str(
+                        repaired_data.get("response", response)
+                    ).strip()
+                    results = execute(mission)
+                    failed = next(
+                        (item for item in results if not item.get("ok")),
+                        None,
+                    )
+
+            if failed:
+                response = response or "The mission failed."
+                response += (
+                    f" Step {failed.get('step')} failed: "
+                    f"{failed.get('error', 'unknown error')}."
+                )
+            else:
+                response = response or "Mission completed."
+
+            _remember(prompt, response)
+            return response
+
+        if mode != "reply":
+            raise ValueError(f"Unknown ULTRON mode: {mode!r}")
+
         response_cache.put(prompt, response)
         _remember(prompt, response)
         return response
 
-    mode = data.get("mode")
-    response = str(data.get("response", "")).strip()
-    mission = data.get("mission", [])
-
-    if mode == "mission":
-        if not isinstance(mission, list) or not mission:
-            raise ValueError("Operator agent selected mission mode without a mission.")
-
-        results = execute(mission)
-        failed = next((item for item in results if not item.get("ok")), None)
-
-        if failed and selected_model != MID_MODEL:
-            repaired, _ = _run_router(
-                prompt
-                + "\n\nRepair the previous mission using this tool error:\n"
-                + str(failed.get("error", "unknown error")),
-                MID_MODEL,
-                180,
-            )
-            repaired_mission = repaired.get("mission", [])
-            if isinstance(repaired_mission, list) and repaired_mission:
-                mission = repaired_mission
-                response = str(repaired.get("response", response)).strip()
-                results = execute(mission)
-                failed = next((item for item in results if not item.get("ok")), None)
-
-        if failed:
-            response = response or "The mission failed."
-            response += f" Step {failed.get('step')} failed: {failed.get('error', 'unknown error')}."
-        else:
-            response = response or "Mission completed."
-
-        _remember(prompt, response)
-        return response
-
-    if mode != "reply":
-        raise ValueError(f"Unknown ULTRON mode: {mode!r}")
-
+    context = _model_context(route.history_turns) + [
+        {"role": "user", "content": prompt}
+    ]
+    response = chat(
+        context,
+        model=route.model,
+        max_output_tokens=route.max_output_tokens,
+        num_ctx=route.num_ctx,
+    )
     response_cache.put(prompt, response)
     _remember(prompt, response)
     return response
@@ -230,7 +257,9 @@ def stream_prompt(prompt: str) -> Iterator[str]:
         yield handle_prompt(prompt)
         return
 
-    context = _model_context() + [{"role": "user", "content": prompt}]
+    context = _model_context(route.history_turns) + [
+        {"role": "user", "content": prompt}
+    ]
     parts: list[str] = []
 
     try:
