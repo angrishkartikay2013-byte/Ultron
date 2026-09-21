@@ -68,21 +68,26 @@ def chat(
         *history,
     ]
 
-    response = requests.post(
-        URL,
-        json={
-            "model": model or FAST_MODEL,
-            "messages": messages,
-            "stream": False,
-            "think": False,
-            "keep_alive": "10m",
-            "options": {
-                "num_predict": max_output_tokens,
-                "temperature": 0.2,
-            },
+    selected_model = model or FAST_MODEL
+    payload = {
+        "model": selected_model,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "keep_alive": "30m",
+        "options": {
+            "num_predict": max_output_tokens,
+            "temperature": 0.2,
         },
-        timeout=timeout,
-    )
+    }
+
+    response = requests.post(URL, json=payload, timeout=timeout)
+
+    if response.status_code == 404 and selected_model != HEAVY_MODEL:
+        payload["model"] = HEAVY_MODEL
+        payload["options"]["num_predict"] = max_output_tokens
+        response = requests.post(URL, json=payload, timeout=timeout)
+
     response.raise_for_status()
 
     data: dict[str, Any] = response.json()
