@@ -11,7 +11,7 @@ os.environ.setdefault("XDG_DATA_HOME", str(WHISPER_DATA_DIR))
 
 from pywhispercpp.model import Model
 
-MODEL = os.getenv("ULTRON_STT_MODEL", "base.en")
+MODEL = os.getenv("ULTRON_STT_MODEL", "tiny.en")
 
 
 def main() -> None:

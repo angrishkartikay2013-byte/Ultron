@@ -21,7 +21,8 @@ WHISPER_MODELS_DIR = WHISPER_DATA_DIR / "models"
 
 os.environ.setdefault("XDG_DATA_HOME", str(WHISPER_DATA_DIR))
 
-WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "base.en")
+# tiny.en is substantially lighter than base.en and is better suited to the i7-4770T.
+WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "tiny.en")
 WHISPER_THREADS = max(2, min(4, os.cpu_count() or 4))
 PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
 DEVICE_FILE = ROOT / "memory" / "audio_device.json"
@@ -51,7 +52,11 @@ def _callback(indata, frames, time_info, status) -> None:
 
 def list_microphones() -> list[tuple[int, str]]:
     devices = sd.query_devices()
-    return [(index, str(info["name"])) for index, info in enumerate(devices) if info.get("max_input_channels", 0) > 0]
+    return [
+        (index, str(info["name"]))
+        for index, info in enumerate(devices)
+        if info.get("max_input_channels", 0) > 0
+    ]
 
 
 def get_saved_device() -> int | None:
@@ -65,7 +70,10 @@ def get_saved_device() -> int | None:
 
 def save_device(device: int) -> None:
     DEVICE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    DEVICE_FILE.write_text(json.dumps({"device": int(device)}, indent=2), encoding="utf-8")
+    DEVICE_FILE.write_text(
+        json.dumps({"device": int(device)}, indent=2),
+        encoding="utf-8",
+    )
 
 
 def choose_microphone() -> int:
@@ -73,9 +81,11 @@ def choose_microphone() -> int:
     available = dict(list_microphones())
     if saved in available:
         return saved
+
     print("\nULTRON microphone selection")
     for index, name in available.items():
         print(f"  [{index}] {name}")
+
     while True:
         try:
             selected = int(input("Select microphone number: ").strip())
@@ -114,7 +124,10 @@ def _transcribe(path: Path) -> str:
     return re.sub(r"\s+", " ", " ".join(parts)).strip()
 
 
-def listen_once(device: int | None = None, stop_event: threading.Event | None = None) -> str:
+def listen_once(
+    device: int | None = None,
+    stop_event: threading.Event | None = None,
+) -> str:
     selected = get_saved_device() if device is None else device
     if selected is None:
         selected = choose_microphone()
@@ -126,8 +139,8 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
             break
 
     threshold = 0.012
-    silence_seconds = 0.70
-    max_seconds = 10.0
+    silence_seconds = 0.50
+    max_seconds = 8.0
     sample_rate = 16000
     started = False
     silence_started = None
@@ -149,7 +162,7 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
                 return ""
 
             try:
-                chunk = audio_queue.get(timeout=0.15)
+                chunk = audio_queue.get(timeout=0.12)
             except queue.Empty:
                 continue
 
@@ -198,7 +211,11 @@ def _speech_chunks(text: str) -> list[str]:
     clean = re.sub(r"\s+", " ", clean).strip()
     if not clean:
         return []
-    return [chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", clean) if chunk.strip()]
+    return [
+        chunk.strip()
+        for chunk in re.split(r"(?<=[.!?])\s+", clean)
+        if chunk.strip()
+    ]
 
 
 def speak(text: str, stop_event: threading.Event | None = None) -> None:

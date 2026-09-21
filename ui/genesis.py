@@ -1,81 +1,88 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .chat import open_chat_window
+from .galaxy_widget import GalaxyWidget
+from .sidebar import MemoryVault
 
 
-def open_memory_galaxy():
-    from .galaxy_widget import GalaxyWidget
-    from .sidebar import MemoryVault
+class GenesisMemory(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("ULTRON GENESIS • Memory Galaxy")
+        self.resize(1500, 900)
+        self.setMinimumSize(1000, 650)
 
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
+        root = QWidget()
+        self.setCentralWidget(root)
 
-    window = QMainWindow()
-    window.setWindowTitle("ULTRON • Memory Galaxy")
-    window.resize(1500, 900)
-    window.setMinimumSize(1000, 650)
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-    root = QWidget()
-    window.setCentralWidget(root)
+        header = QFrame()
+        header.setFixedHeight(68)
+        header.setStyleSheet(
+            "QFrame{background:#050b16;border-bottom:1px solid #123b5a;}"
+        )
 
-    layout = QVBoxLayout(root)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(0)
+        bar = QHBoxLayout(header)
+        bar.setContentsMargins(24, 0, 24, 0)
 
-    header = QFrame()
-    header.setFixedHeight(64)
-    header.setStyleSheet("QFrame{background:#0b0d10;border-bottom:1px solid #252a31;}")
+        title = QLabel("ULTRON GENESIS")
+        title.setStyleSheet(
+            "color:#67e8f9;font-size:23px;font-weight:800;letter-spacing:1px;"
+        )
 
-    bar = QHBoxLayout(header)
-    bar.setContentsMargins(24, 0, 24, 0)
+        subtitle = QLabel("MEMORY GALAXY")
+        subtitle.setStyleSheet("color:#64748b;font-size:11px;font-weight:700;")
 
-    title = QLabel("ULTRON")
-    title.setStyleSheet("color:#f2f4f7;font-size:18px;font-weight:700;")
+        status = QLabel("● MEMORY ONLINE")
+        status.setAlignment(Qt.AlignRight)
+        status.setStyleSheet("color:#55ffad;font-size:11px;font-weight:700;")
 
-    subtitle = QLabel("MEMORY GALAXY")
-    subtitle.setStyleSheet("color:#9299a4;font-size:10px;font-weight:600;")
+        bar.addWidget(title)
+        bar.addSpacing(16)
+        bar.addWidget(subtitle)
+        bar.addStretch()
+        bar.addWidget(status)
+        layout.addWidget(header)
 
-    status = QLabel("LOCAL  •  MEMORY")
-    status.setAlignment(Qt.AlignRight)
-    status.setStyleSheet("color:#72d6a1;font-size:10px;font-weight:600;")
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
-    bar.addWidget(title)
-    bar.addSpacing(14)
-    bar.addWidget(subtitle)
-    bar.addStretch()
-    bar.addWidget(status)
-    layout.addWidget(header)
+        self.sidebar = MemoryVault()
+        self.graph = GalaxyWidget(self.sidebar.update_info)
 
-    body = QHBoxLayout()
-    body.setContentsMargins(0, 0, 0, 0)
-    body.setSpacing(0)
+        body.addWidget(self.graph, 1)
+        body.addWidget(self.sidebar)
+        layout.addLayout(body)
 
-    sidebar = MemoryVault()
-    graph = GalaxyWidget(sidebar.update_info)
 
-    body.addWidget(graph, 1)
-    body.addWidget(sidebar)
-    layout.addLayout(body)
-
+def open_memory_galaxy() -> GenesisMemory:
+    window = GenesisMemory()
+    window.show()
+    window.raise_()
+    window.activateWindow()
     return window
 
 
 def run_memory_galaxy() -> int:
     app = QApplication.instance() or QApplication([])
     window = open_memory_galaxy()
-    window.show()
     app.aboutToQuit.connect(window.close)
     return app.exec()
 
 
-def open_chat() -> object:
-    return open_chat_window()
-
-
 if __name__ == "__main__":
-    app = QApplication.instance() or QApplication([])
-    window = open_chat_window()
-    app.aboutToQuit.connect(window.close)
-    raise SystemExit(app.exec())
+    raise SystemExit(run_memory_galaxy())

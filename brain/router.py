@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import os
 
 
-AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:0.5b-instruct")
+# Logical agents share models where that is faster/cheaper on this CPU.
+AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:1.5b")
 FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 MID_MODEL = os.getenv("ULTRON_MID_MODEL", "qwen2.5:3b")
 HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
@@ -75,12 +76,12 @@ def route_prompt(prompt: str) -> Route:
     text = prompt.strip().casefold()
 
     if any(term in text for term in _OPERATOR_TERMS):
-        return Route("operator", AGENT_MODEL, 96, 1024)
+        return Route("operator", AGENT_MODEL, 80, 768)
 
     if len(text) > 220 or any(term in text for term in _HEAVY_TERMS):
-        return Route("builder", HEAVY_MODEL, 320, 4096)
+        return Route("builder", HEAVY_MODEL, 240, 3072)
 
     if len(text) > 90 or any(term in text for term in _MID_TERMS):
-        return Route("reasoner", MID_MODEL, 220, 2048)
+        return Route("reasoner", MID_MODEL, 160, 1536)
 
-    return Route("conversation", FAST_MODEL, 120, 1536)
+    return Route("conversation", FAST_MODEL, 96, 1024)

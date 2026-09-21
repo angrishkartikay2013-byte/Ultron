@@ -13,6 +13,7 @@ from tools.registry import prompt_catalog
 
 
 ROUTER_PROMPT = """You are ULTRON's desktop operator.
+Input may be speech-recognized and contain obvious grammar, spelling, or transcription mistakes. Silently infer the intended command before routing it.
 Return exactly one JSON object and no markdown.
 
 Reply:
