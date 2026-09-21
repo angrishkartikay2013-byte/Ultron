@@ -165,10 +165,11 @@ def warm_model(model: str = FAST_MODEL) -> str:
 
 
 def warm_speed_stack() -> tuple[str, str]:
-    # Warm the fast model once. The tiny operator model is optional and can
-    # be warmed separately if present, but never blocks normal startup.
+    # Warm the tiny reflex brain first when installed, then the 1.5B fast brain.
+    # If the tiny model is absent, warm_model() transparently falls back.
+    reflex = warm_model(AGENT_MODEL)
     fast = warm_model(FAST_MODEL)
-    return fast, fast
+    return reflex, fast
 
 
 def _messages(
