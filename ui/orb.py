@@ -61,6 +61,24 @@ class ReplyWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class SpeechWorker(QThread):
+    finished = Signal()
+
+    def __init__(self, text: str, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.text = text
+        self.stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def run(self) -> None:
+        try:
+            speak(self.text, stop_event=self.stop_event)
+        finally:
+            self.finished.emit()
+
+
 @dataclass
 class Message:
     role: str
@@ -153,6 +171,7 @@ class GenesisOrb(QWidget):
         self.popup: CommandPopup | None = None
         self.voice: VoiceWorker | None = None
         self.reply: ReplyWorker | None = None
+        self.speech: SpeechWorker | None = None
         self.messages: list[Message] = []
         self._y_down = False
         self._typing_token = 0
@@ -254,7 +273,12 @@ class GenesisOrb(QWidget):
         self.messages.append(Message("ULTRON", text))
         self.set_state("speaking")
         self.type_reply(text)
-        threading.Thread(target=speak, args=(text,), daemon=True).start()
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(150)
+        self.speech = SpeechWorker(text, self)
+        self.speech.finished.connect(self.speech_finished)
+        self.speech.start()
 
     def type_reply(self, text: str) -> None:
         if not self.popup:
@@ -284,6 +308,10 @@ class GenesisOrb(QWidget):
     def interrupt(self) -> None:
         self._typing_token += 1
         self.stop_voice()
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(200)
+            self.speech = None
 
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
@@ -293,6 +321,11 @@ class GenesisOrb(QWidget):
         self.set_state("idle")
         self.show_popup()
         self.popup.text.setText("Interrupted. Standing by.")
+
+    def speech_finished(self) -> None:
+        self.speech = None
+        if self.state == "speaking":
+            self.set_state("idle")
 
     def stop_voice(self) -> None:
         if self.voice and self.voice.isRunning():
@@ -362,6 +395,10 @@ class GenesisOrb(QWidget):
     def closeEvent(self, event) -> None:
         self._typing_token += 1
         self.stop_voice()
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(200)
+            self.speech = None
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
             self.reply.wait(200)
