@@ -386,6 +386,12 @@ class GenesisOrb(QWidget):
         self.popup.text.setText("Microphone error:\n" + message)
         self.popup.set_activity("Stage: microphone error.")
 
+    def reply_error(self, message: str) -> None:
+        self.set_state("error")
+        self.show_popup()
+        self.popup.text.setText("Brain error:\n" + message)
+        self.popup.set_activity("Stage: model error.")
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
