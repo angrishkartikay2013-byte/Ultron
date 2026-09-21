@@ -118,11 +118,11 @@ def _is_heavy_task(prompt: str) -> bool:
     return len(prompt) > 180 or any(keyword in lowered for keyword in keywords)
 
 
-def _run_model_router(prompt: str) -> dict[str, Any]:
+def _run_model_router(prompt: str, forced_model: str | None = None) -> tuple[dict[str, Any], str]:
     catalog = prompt_catalog()
     context = list(history[-12:]) + [{"role": "user", "content": prompt}]
 
-    model = HEAVY_MODEL if _is_heavy_task(prompt) else FAST_MODEL
+    model = forced_model or (HEAVY_MODEL if _is_heavy_task(prompt) else FAST_MODEL)
     extra = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n" + catalog
 
     try:
@@ -132,7 +132,7 @@ def _run_model_router(prompt: str) -> dict[str, Any]:
             model=model,
             max_output_tokens=220 if model == FAST_MODEL else 420,
         )
-        return _extract_json(routed)
+        return _extract_json(routed), model
     except Exception:
         if model == HEAVY_MODEL:
             raise
@@ -161,7 +161,7 @@ def handle_prompt(prompt: str) -> str:
         response = _execute_and_remember(prompt, mission)
         return response
 
-    data = _run_model_router(prompt)
+    data, selected_model = _run_model_router(prompt)
     mode = data.get("mode")
     response = str(data.get("response", "")).strip()
     mission = data.get("mission", [])
@@ -169,7 +169,32 @@ def handle_prompt(prompt: str) -> str:
     if mode == "mission":
         if not isinstance(mission, list) or not mission:
             raise ValueError("ULTRON selected mission mode without a mission.")
-        response = _execute_and_remember(prompt, mission, fallback=response)
+
+        results = execute(mission)
+        failed = next((item for item in results if not item.get("ok")), None)
+
+        if failed and selected_model != HEAVY_MODEL:
+            repair_prompt = (
+                prompt
+                + "\n\nThe previous mission failed with this tool error:\n"
+                + str(failed.get("error", "unknown error"))
+                + "\nRepair the mission and return JSON only."
+            )
+            repaired, _ = _run_model_router(repair_prompt, forced_model=HEAVY_MODEL)
+            repaired_mission = repaired.get("mission", [])
+            if isinstance(repaired_mission, list) and repaired_mission:
+                mission = repaired_mission
+                response = str(repaired.get("response", response)).strip()
+                results = execute(mission)
+                failed = next((item for item in results if not item.get("ok")), None)
+
+        if failed:
+            response = response or f"Mission stopped at step {failed.get('step')}."
+            response += f" Error: {failed.get('error', 'unknown error')}."
+        else:
+            response = response or "Mission complete."
+
+        _remember(prompt, response)
         return response
 
     if mode != "reply":
