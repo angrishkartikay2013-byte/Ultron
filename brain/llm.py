@@ -7,7 +7,8 @@ from typing import Any
 
 import requests
 
-MODEL = os.getenv("ULTRON_MODEL", "qwen3:8b")
+FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:3b")
+HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
 BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
 
@@ -16,6 +17,7 @@ Address the user as Founder.
 Be concise, capable, calm, and practical.
 Never expose private chain-of-thought.
 Remember that the user is building ULTRON as a long-term second brain.
+For simple conversation, answer in one or two short sentences.
 """
 
 
@@ -27,8 +29,8 @@ def ensure_ollama() -> None:
         pass
 
     env = os.environ.copy()
-    env["OLLAMA_MODELS"] = env.get("OLLAMA_MODELS", r"E:\ULTRON\models")
-    ollama = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
+    env["OLLAMA_MODELS"] = env.get("OLLAMA_MODELS", r"E:ULTRONmodels")
+    ollama = os.path.expandvars(r"%LOCALAPPDATA%ProgramsOllamaollama.exe")
 
     subprocess.Popen(
         [ollama, "serve"],
@@ -50,8 +52,10 @@ def ensure_ollama() -> None:
 
 def chat(
     history: list[dict[str, str]],
-    timeout: int = 180,
+    timeout: int = 120,
     system_extra: str = "",
+    model: str | None = None,
+    max_output_tokens: int = 160,
 ) -> str:
     ensure_ollama()
 
@@ -67,10 +71,15 @@ def chat(
     response = requests.post(
         URL,
         json={
-            "model": MODEL,
+            "model": model or FAST_MODEL,
             "messages": messages,
             "stream": False,
             "think": False,
+            "keep_alive": "10m",
+            "options": {
+                "num_predict": max_output_tokens,
+                "temperature": 0.2,
+            },
         },
         timeout=timeout,
     )
