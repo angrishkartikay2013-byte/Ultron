@@ -1,23 +1,40 @@
+from __future__ import annotations
+
+import os
 import subprocess
 
 TOOL = {
     "name": "open_app",
-    "description": "Open a Windows application by its name."
+    "description": "Open a Windows desktop application. Pass its plain application name.",
 }
 
-COMMON_APPS = {
+ALIASES = {
     "calculator": "calc.exe",
-    "paint": "mspaint.exe",
+    "calc": "calc.exe",
     "notepad": "notepad.exe",
+    "paint": "mspaint.exe",
+    "microsoft paint": "mspaint.exe",
     "cmd": "cmd.exe",
-    "explorer": "explorer.exe"
+    "command prompt": "cmd.exe",
+    "powershell": "powershell.exe",
+    "explorer": "explorer.exe",
+    "file explorer": "explorer.exe",
+    "settings": "ms-settings:",
 }
 
-def run(app):
-    app = app.lower().strip()
 
-    target = COMMON_APPS.get(app, app)
+def run(app: str = "", name: str = "", application: str = "", **kwargs) -> str:
+    value = (app or name or application).strip().lower()
+    if not value:
+        raise ValueError("No application name was supplied.")
 
-    subprocess.Popen(target, shell=True)
+    target = ALIASES.get(value, value)
 
-    return f"Opened {app}."
+    if target.endswith(":"):
+        os.startfile(target)
+    elif target.endswith(".exe") or "\\" in target or "/" in target:
+        subprocess.Popen(target, shell=True)
+    else:
+        subprocess.Popen(f'start "" "{target}"', shell=True)
+
+    return f"Opened {value}."
