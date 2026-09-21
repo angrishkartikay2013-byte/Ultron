@@ -7,21 +7,25 @@ import threading
 from array import array
 from pathlib import Path
 
-import pyttsx3
 import sounddevice as sd
+from piper import PiperVoice
 from vosk import KaldiRecognizer, Model
 
 VOICE_MODELS = [
     Path("voice_models") / "vosk-model-small-en-in-0.4",
     Path("voice_models") / "vosk-model-small-en-us-0.15",
 ]
+PIPER_MODEL = Path("voice_models") / "piper" / "en_US-ryan-high.onnx"
 DEVICE_FILE = Path("memory") / "audio_device.json"
 
-MODEL_PATH = next((path for path in VOICE_MODELS if path.exists()), None)
-if MODEL_PATH is None:
+VOICE_MODEL_PATH = next((path for path in VOICE_MODELS if path.exists()), None)
+if VOICE_MODEL_PATH is None:
     raise FileNotFoundError("No Vosk model found in voice_models/.")
+if not PIPER_MODEL.exists():
+    raise FileNotFoundError(f"Piper voice not found at {PIPER_MODEL}. Run: uv run scripts/setup_piper_voice.py")
 
-model = Model(str(MODEL_PATH))
+recognition_model = Model(str(VOICE_MODEL_PATH))
+speech_model = PiperVoice.load(str(PIPER_MODEL))
 audio_queue: queue.Queue[bytes] = queue.Queue()
 
 def _callback(indata, frames, time_info, status) -> None:
@@ -29,7 +33,7 @@ def _callback(indata, frames, time_info, status) -> None:
 
 def list_microphones() -> list[tuple[int, str]]:
     devices = sd.query_devices()
-    return [(i, str(info['name'])) for i, info in enumerate(devices) if info.get('max_input_channels', 0) > 0]
+    return [(index, str(info['name'])) for index, info in enumerate(devices) if info.get('max_input_channels', 0) > 0]
 
 def get_saved_device() -> int | None:
     try:
@@ -77,8 +81,7 @@ def _adaptive_gain(data: bytes) -> bytes:
     if gain == 1.0:
         return data
     for i, sample in enumerate(samples):
-        value = int(sample * gain)
-        samples[i] = max(-32768, min(32767, value))
+        samples[i] = max(-32768, min(32767, int(sample * gain)))
     return samples.tobytes()
 
 def listen_once(device: int | None = None, stop_event: threading.Event | None = None) -> str:
@@ -96,7 +99,7 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
             audio_queue.get_nowait()
         except queue.Empty:
             break
-    recognizer = KaldiRecognizer(model, sample_rate)
+    recognizer = KaldiRecognizer(recognition_model, sample_rate)
     recognizer.SetWords(True)
     with sd.RawInputStream(samplerate=sample_rate, blocksize=2048, dtype='int16', channels=1, callback=_callback, device=selected, latency='low'):
         while True:
@@ -106,32 +109,10 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
                 data = audio_queue.get(timeout=0.15)
             except queue.Empty:
                 continue
-            boosted = _adaptive_gain(data)
-            if recognizer.AcceptWaveform(boosted):
+            if recognizer.AcceptWaveform(_adaptive_gain(data)):
                 text = json.loads(recognizer.Result()).get('text', '').strip()
                 if text:
                     return text
-
-_tts_lock = threading.Lock()
-_tts_engine = None
-
-def _tts():
-    global _tts_engine
-    if _tts_engine is None:
-        _tts_engine = pyttsx3.init('sapi5')
-        voices = _tts_engine.getProperty('voices') or []
-        preferred = ('zira', 'david', 'english', 'mark')
-        chosen = None
-        for voice in voices:
-            name = str(getattr(voice, 'name', '')).lower()
-            if any(token in name for token in preferred):
-                chosen = voice.id
-                break
-        if chosen:
-            _tts_engine.setProperty('voice', chosen)
-        _tts_engine.setProperty('rate', 165)
-        _tts_engine.setProperty('volume', 1.0)
-    return _tts_engine
 
 def _speech_chunks(text: str) -> list[str]:
     clean = re.sub(r'```.*?```', ' ', text, flags=re.S)
@@ -139,22 +120,27 @@ def _speech_chunks(text: str) -> list[str]:
     clean = re.sub(r'\s+', ' ', clean).strip()
     if not clean:
         return []
-    chunks = re.split(r'(?<=[.!?])\s+', clean)
-    return [chunk.strip() for chunk in chunks if chunk.strip()]
+    return [chunk.strip() for chunk in re.split(r'(?<=[.!?])\s+', clean) if chunk.strip()]
+
+_speech_lock = threading.Lock()
 
 def speak(text: str, stop_event: threading.Event | None = None) -> None:
     chunks = _speech_chunks(text)
     if not chunks:
         return
-    with _tts_lock:
-        engine = _tts()
-        for chunk in chunks:
-            if stop_event and stop_event.is_set():
-                engine.stop()
-                return
-            try:
-                engine.say(chunk)
-                engine.runAndWait()
-            except RuntimeError:
-                engine.stop()
-                break
+    with _speech_lock:
+        stream = sd.RawOutputStream(samplerate=speech_model.config.sample_rate, channels=1, dtype='int16', latency='low')
+        stream.start()
+        try:
+            for chunk_text in chunks:
+                if stop_event and stop_event.is_set():
+                    break
+                for audio in speech_model.synthesize(chunk_text):
+                    if stop_event and stop_event.is_set():
+                        break
+                    stream.write(audio.audio_int16_bytes)
+                if stop_event and stop_event.is_set():
+                    break
+        finally:
+            stream.stop()
+            stream.close()
