@@ -124,6 +124,17 @@ def _transcribe(path: Path) -> str:
     return re.sub(r"\s+", " ", " ".join(parts)).strip()
 
 
+def _noise_floor(chunks: list[np.ndarray]) -> float:
+    if not chunks:
+        return 0.005
+
+    rms_values = [
+        float(np.sqrt(np.mean(np.square(chunk))) + 1e-9)
+        for chunk in chunks
+    ]
+    return float(np.median(rms_values))
+
+
 def listen_once(
     device: int | None = None,
     stop_event: threading.Event | None = None,
@@ -138,15 +149,23 @@ def listen_once(
         except queue.Empty:
             break
 
-    threshold = 0.012
+    sample_rate = 16000
     silence_seconds = 0.50
     max_seconds = 8.0
-    sample_rate = 16000
+
+    # Learn the room tone first so constant fan/AC/PC noise does not trigger
+    # the microphone gate.
+    calibration_seconds = 0.45
+    calibration_samples = int(calibration_seconds * sample_rate)
+    calibration_chunks: list[np.ndarray] = []
+    calibration_total = 0
+
     started = False
-    silence_started = None
+    silence_started: float | None = None
     chunks: list[np.ndarray] = []
-    pre_roll: deque[np.ndarray] = deque(maxlen=3)
+    pre_roll: deque[np.ndarray] = deque(maxlen=4)
     total_samples = 0
+    voiced_chunks = 0
 
     with sd.InputStream(
         samplerate=sample_rate,
@@ -157,6 +176,23 @@ def listen_once(
         device=selected,
         latency="low",
     ):
+        while calibration_total < calibration_samples:
+            if stop_event and stop_event.is_set():
+                return ""
+            try:
+                chunk = audio_queue.get(timeout=0.12)
+            except queue.Empty:
+                continue
+            calibration_chunks.append(chunk)
+            calibration_total += len(chunk)
+
+        floor = _noise_floor(calibration_chunks)
+
+        # Speech must rise well above the measured room floor.
+        # The lower release threshold avoids chopping quiet words.
+        onset_threshold = max(0.009, floor * 2.8)
+        release_threshold = max(0.006, floor * 1.8)
+
         while True:
             if stop_event and stop_event.is_set():
                 return ""
@@ -171,7 +207,15 @@ def listen_once(
 
             if not started:
                 pre_roll.append(chunk)
-                if rms >= threshold:
+
+                # Require a brief sustained voice onset instead of one noisy
+                # microphone block.
+                if rms >= onset_threshold:
+                    voiced_chunks += 1
+                else:
+                    voiced_chunks = 0
+
+                if voiced_chunks >= 3:
                     started = True
                     chunks.extend(list(pre_roll))
                     total_samples += sum(len(item) for item in pre_roll)
@@ -180,7 +224,7 @@ def listen_once(
             chunks.append(chunk)
             total_samples += len(chunk)
 
-            if rms < threshold:
+            if rms < release_threshold:
                 if silence_started is None:
                     silence_started = now
                 elif now - silence_started >= silence_seconds:
@@ -202,7 +246,6 @@ def listen_once(
             path.unlink()
         except OSError:
             pass
-
 
 def _speech_chunks(text: str) -> list[str]:
     clean = re.sub(chr(96) * 3 + r".*?" + chr(96) * 3, " ", text, flags=re.S)
