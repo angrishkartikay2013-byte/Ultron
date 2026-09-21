@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brain import ask
+from brain.agent import handle_prompt
 from voice import listen_once, speak
 
 
@@ -56,7 +56,7 @@ class ReplyWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.ready.emit(ask(self.prompt))
+            self.ready.emit(handle_prompt(self.prompt))
         except Exception as exc:
             self.failed.emit(str(exc))
 
