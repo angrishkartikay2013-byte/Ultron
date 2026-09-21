@@ -26,7 +26,7 @@ Conversation:
 {"mode":"reply","response":"...","mission":[]}
 
 Desktop action:
-{"mode":"mission","response":"...", "mission":[
+{"mode":"mission","response":"...","mission":[
   {"tool":"open_app","arguments":{"app":"notepad"}},
   {"tool":"wait","arguments":{"seconds":1}},
   {"tool":"type_text","arguments":{"text":"I was here"}}
@@ -36,7 +36,7 @@ Rules:
 - Only use listed tools.
 - Use the exact argument names shown in each tool signature.
 - Never omit required information.
-- Use multiple steps when the task requires multiple actions.
+- Use multiple steps when needed.
 - Keep responses short.
 """
 
@@ -45,11 +45,10 @@ def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     start = text.find("{")
     end = text.rfind("}")
-
     if start == -1 or end <= start:
         raise ValueError("ULTRON returned no JSON object.")
 
-    value = json.loads(text[start : end + 1])
+    value = json.loads(text[start:end + 1])
     if not isinstance(value, dict):
         raise ValueError("ULTRON returned an invalid JSON root.")
     return value
@@ -66,8 +65,10 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     if match:
         app = match.group(1).strip(" .")
         value = match.group(2).strip()
-        if len(value) >= 2 and value[0] in ""'" and value[-1] == value[0]:
+
+        if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
             value = value[1:-1]
+
         return [
             {"tool": "open_app", "arguments": {"app": app}},
             {"tool": "wait", "arguments": {"seconds": 0.8}},
@@ -76,7 +77,9 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
 
     match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
     if match and len(text.split()) <= 8:
-        return [{"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}]
+        return [
+            {"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}
+        ]
 
     match = re.match(
         r"^(?:move|put)\s+(?:the\s+)?mouse\s+(?:to|at)\s+(.+)$",
@@ -85,7 +88,10 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     )
     if match:
         position = match.group(1).strip(" .")
-        coordinate = re.match(r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$", position)
+        coordinate = re.match(
+            r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$",
+            position,
+        )
         if coordinate:
             return [{
                 "tool": "mouse_move",
@@ -118,10 +124,12 @@ def _is_heavy_task(prompt: str) -> bool:
     return len(prompt) > 180 or any(keyword in lowered for keyword in keywords)
 
 
-def _run_model_router(prompt: str, forced_model: str | None = None) -> tuple[dict[str, Any], str]:
+def _run_model_router(
+    prompt: str,
+    forced_model: str | None = None,
+) -> tuple[dict[str, Any], str]:
     catalog = prompt_catalog()
     context = list(history[-12:]) + [{"role": "user", "content": prompt}]
-
     model = forced_model or (HEAVY_MODEL if _is_heavy_task(prompt) else FAST_MODEL)
     extra = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n" + catalog
 
@@ -139,11 +147,12 @@ def _run_model_router(prompt: str, forced_model: str | None = None) -> tuple[dic
 
         routed = chat(
             context,
-            system_extra=extra + "\n\nThe fast router failed. Be especially strict about JSON and tool arguments.",
+            system_extra=extra
+            + "\n\nFast router failed. Be strict about JSON and tool arguments.",
             model=HEAVY_MODEL,
             max_output_tokens=420,
         )
-        return _extract_json(routed)
+        return _extract_json(routed), HEAVY_MODEL
 
 
 def handle_prompt(prompt: str) -> str:
@@ -158,8 +167,7 @@ def handle_prompt(prompt: str) -> str:
 
     mission = _direct_mission(prompt)
     if mission is not None:
-        response = _execute_and_remember(prompt, mission)
-        return response
+        return _execute_and_remember(prompt, mission)
 
     data, selected_model = _run_model_router(prompt)
     mode = data.get("mode")
@@ -180,13 +188,20 @@ def handle_prompt(prompt: str) -> str:
                 + str(failed.get("error", "unknown error"))
                 + "\nRepair the mission and return JSON only."
             )
-            repaired, _ = _run_model_router(repair_prompt, forced_model=HEAVY_MODEL)
+            repaired, _ = _run_model_router(
+                repair_prompt,
+                forced_model=HEAVY_MODEL,
+            )
             repaired_mission = repaired.get("mission", [])
+
             if isinstance(repaired_mission, list) and repaired_mission:
                 mission = repaired_mission
                 response = str(repaired.get("response", response)).strip()
                 results = execute(mission)
-                failed = next((item for item in results if not item.get("ok")), None)
+                failed = next(
+                    (item for item in results if not item.get("ok")),
+                    None,
+                )
 
         if failed:
             response = response or f"Mission stopped at step {failed.get('step')}."
