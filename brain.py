@@ -47,10 +47,12 @@ def ask(prompt: str) -> str:
         return ""
 
     history.append({"role": "user", "content": prompt})
+    del history[:-MAX_MESSAGES]
     reply = chat(history)
     reply = reply.strip()
 
     history.append({"role": "assistant", "content": reply})
+    del history[:-MAX_MESSAGES]
     _save()
 
     return reply
