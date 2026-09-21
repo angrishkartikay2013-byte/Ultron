@@ -1,0 +1,119 @@
+{
+  "nodes": [
+    {
+      "id": "founder",
+      "label": "Founder",
+      "description": "Central identity node for ULTRON.",
+      "color": "#62E8FF",
+      "links": [
+        "ultron",
+        "school",
+        "sanitary-business",
+        "roblox",
+        "youtube"
+      ]
+    },
+    {
+      "id": "ultron",
+      "label": "ULTRON",
+      "description": "Local AI desktop assistant and long-term second brain.",
+      "color": "#8A70FF",
+      "links": [
+        "founder",
+        "missions",
+        "memory",
+        "tools"
+      ]
+    },
+    {
+      "id": "school",
+      "label": "School",
+      "description": "Class 8 academics, subjects, exams and notes.",
+      "color": "#38BDF8",
+      "links": [
+        "founder",
+        "science",
+        "maths"
+      ]
+    },
+    {
+      "id": "sanitary-business",
+      "label": "Sanitary Business",
+      "description": "Catalog, Amazon, Flipkart, product images and business workflows.",
+      "color": "#49FFA2",
+      "links": [
+        "founder",
+        "catalog",
+        "amazon",
+        "flipkart"
+      ]
+    },
+    {
+      "id": "roblox",
+      "label": "Roblox",
+      "description": "Game development, building, design and monetization.",
+      "color": "#FFB84D",
+      "links": [
+        "founder",
+        "game-ideas",
+        "youtube"
+      ]
+    },
+    {
+      "id": "youtube",
+      "label": "YouTube",
+      "description": "Creator projects, editing, thumbnails and videos.",
+      "color": "#FF5F6D",
+      "links": [
+        "founder",
+        "roblox",
+        "editing"
+      ]
+    },
+    {
+      "id": "science",
+      "label": "Science",
+      "description": "Physics and science study knowledge.",
+      "color": "#8BE9FD",
+      "links": [
+        "school"
+      ]
+    },
+    {
+      "id": "maths",
+      "label": "Maths",
+      "description": "Class 8 mathematics knowledge and exam work.",
+      "color": "#C4B5FD",
+      "links": [
+        "school"
+      ]
+    },
+    {
+      "id": "missions",
+      "label": "Missions",
+      "description": "Tasks ULTRON is executing for Founder.",
+      "color": "#F0ABFC",
+      "links": [
+        "ultron"
+      ]
+    },
+    {
+      "id": "memory",
+      "label": "Memory",
+      "description": "Persistent conversation and knowledge graph.",
+      "color": "#67E8F9",
+      "links": [
+        "ultron"
+      ]
+    },
+    {
+      "id": "tools",
+      "label": "Tools",
+      "description": "Capabilities ULTRON can call on the desktop.",
+      "color": "#A7F3D0",
+      "links": [
+        "ultron"
+      ]
+    }
+  ]
+}
