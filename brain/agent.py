@@ -155,12 +155,18 @@ def _run_model_router(
         return _extract_json(routed), HEAVY_MODEL
 
 
+def _quick_reply(prompt: str) -> str | None:
+    normalized = re.sub(r"[^a-z0-9\\s]", "", prompt.casefold()).strip()
+    normalized = re.sub(r"\\s+", " ", normalized)
+    return QUICK_REPLIES.get(normalized)
+
+
 def handle_prompt(prompt: str) -> str:
     prompt = prompt.strip()
     if not prompt:
         return ""
 
-    quick = QUICK_REPLIES.get(prompt.casefold())
+    quick = _quick_reply(prompt)
     if quick:
         _remember(prompt, quick)
         return quick
