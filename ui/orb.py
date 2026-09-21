@@ -175,6 +175,7 @@ class GenesisOrb(QWidget):
         self.messages: list[Message] = []
         self._y_down = False
         self._typing_token = 0
+        self.galaxy = None
 
         screen = QApplication.primaryScreen()
         if screen:
@@ -233,7 +234,8 @@ class GenesisOrb(QWidget):
             self.show_popup()
 
     def mouseDoubleClickEvent(self, event) -> None:
-        self.show_popup()
+        from ui.genesis import open_memory_galaxy
+        self.galaxy = open_memory_galaxy()
 
     def listen(self) -> None:
         if self.reply and self.reply.isRunning():
