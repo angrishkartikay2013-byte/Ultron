@@ -435,10 +435,16 @@ class GenesisOrb(QWidget):
         self.popup.set_activity("Stage: microphone error.")
 
     def reply_error(self, message: str) -> None:
+        self._generation_finished = True
+        self._speech_finished = True
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(250)
+            self.speech = None
         self.set_state("error")
         self.show_popup()
         self.popup.text.setText("Brain error:\n" + message)
-        self.popup.set_activity("Stage: model error.")
+        self.popup.set_activity("Stage: model error. Ready to retry.")
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
