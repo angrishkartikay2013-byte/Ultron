@@ -303,8 +303,8 @@ class GenesisOrb(QWidget):
             if index < len(text):
                 QTimer.singleShot(14, tick)
             else:
-                self.set_state("idle")
-                QTimer.singleShot(250, self.listen)
+                # SpeechWorker controls when the microphone can reopen.
+                self.set_state("speaking")
 
         tick()
 
@@ -329,6 +329,7 @@ class GenesisOrb(QWidget):
         self.speech = None
         if self.state == "speaking":
             self.set_state("idle")
+            QTimer.singleShot(250, self.listen)
 
     def reply_finished(self) -> None:
         self.reply = None
