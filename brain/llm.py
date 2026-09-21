@@ -11,8 +11,8 @@ FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
 BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
-OLLAMA_MODELS = os.getenv("OLLAMA_MODELS", r"E:ULTRONmodels")
-OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%ProgramsOllamaollama.exe")
+OLLAMA_MODELS = os.getenv("OLLAMA_MODELS", r"E:\ULTRON\models")
+OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
 
 SYSTEM_PROMPT = """You are ULTRON GENESIS, a local desktop AI assistant.
 Address the user as Founder.
