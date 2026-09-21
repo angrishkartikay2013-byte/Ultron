@@ -5,7 +5,7 @@ import subprocess
 
 OLLAMA = os.path.expandvars(r'%LOCALAPPDATA%\\Programs\\Ollama\\ollama.exe')
 MODEL_DIR = r'E:\\ULTRON\\models'
-MODEL = 'qwen2.5:3b'
+MODEL = 'qwen2.5:1.5b'
 
 def main() -> None:
     env = os.environ.copy()
