@@ -2,43 +2,35 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Iterator
 
+from .cache import response_cache
 from .core import history, _save
-from .llm import FAST_MODEL, HEAVY_MODEL, chat
+from .llm import chat, stream_chat
+from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, route_prompt
 from tools.executor import execute
 from tools.registry import prompt_catalog
 
-QUICK_REPLIES = {
-    "hi": "Hello, Founder. I am online.",
-    "hello": "Hello, Founder. I am online.",
-    "hey": "Hey, Founder. ULTRON is online.",
-    "good morning": "Good morning, Founder.",
-    "good night": "Good night, Founder.",
-    "thanks": "Always, Founder.",
-    "thank you": "Always, Founder.",
-}
 
-ROUTER_PROMPT = """You are ULTRON's action router.
+ROUTER_PROMPT = """You are ULTRON's desktop operator.
 Return exactly one JSON object and no markdown.
 
-Conversation:
-{"mode":"reply","response":"...","mission":[]}
+Reply:
+{"mode":"reply","response":"short response","mission":[]}
 
-Desktop action:
-{"mode":"mission","response":"...","mission":[
-  {"tool":"open_app","arguments":{"app":"notepad"}},
-  {"tool":"wait","arguments":{"seconds":1}},
-  {"tool":"type_text","arguments":{"text":"I was here"}}
+Mission:
+{"mode":"mission","response":"short status","mission":[
+  {"tool":"open_app","arguments":{"app":"notepad"}}
 ]}
 
 Rules:
-- Only use listed tools.
-- Use the exact argument names shown in each tool signature.
-- Never omit required information.
-- Use multiple steps when needed.
-- Keep responses short.
+- Only use available tools.
+- Use exact argument names.
+- Never invent tools.
+- Keep the mission minimal.
 """
+
+_OPERATOR_PROMPT = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n"
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -65,21 +57,17 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     if match:
         app = match.group(1).strip(" .")
         value = match.group(2).strip()
-
         if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
             value = value[1:-1]
-
         return [
             {"tool": "open_app", "arguments": {"app": app}},
-            {"tool": "wait", "arguments": {"seconds": 0.8}},
+            {"tool": "wait", "arguments": {"seconds": 0.7}},
             {"tool": "type_text", "arguments": {"text": value}},
         ]
 
     match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
     if match and len(text.split()) <= 8:
-        return [
-            {"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}
-        ]
+        return [{"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}]
 
     match = re.match(
         r"^(?:move|put)\s+(?:the\s+)?mouse\s+(?:to|at)\s+(.+)$",
@@ -88,10 +76,7 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     )
     if match:
         position = match.group(1).strip(" .")
-        coordinate = re.match(
-            r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$",
-            position,
-        )
+        coordinate = re.match(r"^\(?\s*(\d+)\s*[, ]\s*(\d+)\s*\)?$", position)
         if coordinate:
             return [{
                 "tool": "mouse_move",
@@ -105,142 +90,38 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     return None
 
 
-def _is_heavy_task(prompt: str) -> bool:
-    keywords = (
-        "write code",
-        "build",
-        "debug",
-        "research",
-        "analyze",
-        "analyse",
-        "plan",
-        "design",
-        "create a project",
-        "fix this",
-        "explain deeply",
-        "step by step",
+def _model_context() -> list[dict[str, str]]:
+    return list(history[-8:])
+
+
+def _run_router(prompt: str, model: str, max_output_tokens: int = 180) -> tuple[dict[str, Any], str]:
+    context = _model_context() + [{"role": "user", "content": prompt}]
+    routed = chat(
+        context,
+        system_extra=_OPERATOR_PROMPT + prompt_catalog(),
+        model=model,
+        max_output_tokens=max_output_tokens,
+        num_ctx=1024,
     )
-    lowered = prompt.casefold()
-    return len(prompt) > 180 or any(keyword in lowered for keyword in keywords)
+    return _extract_json(routed), model
 
 
-def _run_model_router(
-    prompt: str,
-    forced_model: str | None = None,
-) -> tuple[dict[str, Any], str]:
-    catalog = prompt_catalog()
-    context = list(history[-12:]) + [{"role": "user", "content": prompt}]
-    model = forced_model or (HEAVY_MODEL if _is_heavy_task(prompt) else FAST_MODEL)
-    extra = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n" + catalog
-
-    try:
-        routed = chat(
-            context,
-            system_extra=extra,
-            model=model,
-            max_output_tokens=220 if model == FAST_MODEL else 420,
-        )
-        return _extract_json(routed), model
-    except Exception:
-        if model == HEAVY_MODEL:
-            raise
-
-        routed = chat(
-            context,
-            system_extra=extra
-            + "\n\nFast router failed. Be strict about JSON and tool arguments.",
-            model=HEAVY_MODEL,
-            max_output_tokens=420,
-        )
-        return _extract_json(routed), HEAVY_MODEL
-
-
-def _quick_reply(prompt: str) -> str | None:
-    normalized = re.sub(r"[^a-z0-9\\s]", "", prompt.casefold()).strip()
-    normalized = re.sub(r"\\s+", " ", normalized)
-    return QUICK_REPLIES.get(normalized)
-
-
-def handle_prompt(prompt: str) -> str:
-    prompt = prompt.strip()
-    if not prompt:
-        return ""
-
-    quick = _quick_reply(prompt)
-    if quick:
-        _remember(prompt, quick)
-        return quick
-
-    mission = _direct_mission(prompt)
-    if mission is not None:
-        return _execute_and_remember(prompt, mission)
-
-    data, selected_model = _run_model_router(prompt)
-    mode = data.get("mode")
-    response = str(data.get("response", "")).strip()
-    mission = data.get("mission", [])
-
-    if mode == "mission":
-        if not isinstance(mission, list) or not mission:
-            raise ValueError("ULTRON selected mission mode without a mission.")
-
-        results = execute(mission)
-        failed = next((item for item in results if not item.get("ok")), None)
-
-        if failed and selected_model != HEAVY_MODEL:
-            repair_prompt = (
-                prompt
-                + "\n\nThe previous mission failed with this tool error:\n"
-                + str(failed.get("error", "unknown error"))
-                + "\nRepair the mission and return JSON only."
-            )
-            repaired, _ = _run_model_router(
-                repair_prompt,
-                forced_model=HEAVY_MODEL,
-            )
-            repaired_mission = repaired.get("mission", [])
-
-            if isinstance(repaired_mission, list) and repaired_mission:
-                mission = repaired_mission
-                response = str(repaired.get("response", response)).strip()
-                results = execute(mission)
-                failed = next(
-                    (item for item in results if not item.get("ok")),
-                    None,
-                )
-
-        if failed:
-            response = response or f"Mission stopped at step {failed.get('step')}."
-            response += f" Error: {failed.get('error', 'unknown error')}."
-        else:
-            response = response or "Mission complete."
-
-        _remember(prompt, response)
-        return response
-
-    if mode != "reply":
-        raise ValueError(f"Unknown ULTRON mode: {mode!r}")
-
-    _remember(prompt, response)
-    return response
-
-
-def _execute_and_remember(
+def _execute_mission(
     prompt: str,
     mission: list[dict[str, Any]],
-    fallback: str = "",
+    response: str = "",
 ) -> str:
     results = execute(mission)
     failed = next((item for item in results if not item.get("ok")), None)
 
     if failed:
-        response = fallback or f"Mission stopped at step {failed.get('step')}."
-        response += f" Error: {failed.get('error', 'unknown error')}."
+        output = response or "The mission could not be completed."
+        output += f" Step {failed.get('step')} failed: {failed.get('error', 'unknown error')}."
     else:
-        response = fallback or "Mission complete."
+        output = response or "Mission completed."
 
-    _remember(prompt, response)
-    return response
+    _remember(prompt, output)
+    return output
 
 
 def _remember(prompt: str, response: str) -> None:
@@ -248,3 +129,124 @@ def _remember(prompt: str, response: str) -> None:
     history.append({"role": "assistant", "content": response})
     del history[:-40]
     _save()
+
+
+def handle_prompt(prompt: str) -> str:
+    prompt = prompt.strip()
+    if not prompt:
+        return ""
+
+    mission = _direct_mission(prompt)
+    if mission is not None:
+        return _execute_mission(prompt, mission)
+
+    cached = response_cache.get(prompt)
+    if cached is not None:
+        _remember(prompt, cached)
+        return cached
+
+    route = route_prompt(prompt)
+
+    if route.agent == "operator":
+        try:
+            data, selected_model = _run_router(prompt, AGENT_MODEL, 96)
+        except Exception:
+            data, selected_model = _run_router(prompt, FAST_MODEL, 160)
+    else:
+        context = _model_context() + [{"role": "user", "content": prompt}]
+        response = chat(
+            context,
+            model=route.model,
+            max_output_tokens=route.max_output_tokens,
+            num_ctx=route.num_ctx,
+        )
+        response_cache.put(prompt, response)
+        _remember(prompt, response)
+        return response
+
+    mode = data.get("mode")
+    response = str(data.get("response", "")).strip()
+    mission = data.get("mission", [])
+
+    if mode == "mission":
+        if not isinstance(mission, list) or not mission:
+            raise ValueError("Operator agent selected mission mode without a mission.")
+
+        results = execute(mission)
+        failed = next((item for item in results if not item.get("ok")), None)
+
+        if failed and selected_model != MID_MODEL:
+            repaired, _ = _run_router(
+                prompt
+                + "\n\nRepair the previous mission using this tool error:\n"
+                + str(failed.get("error", "unknown error")),
+                MID_MODEL,
+                180,
+            )
+            repaired_mission = repaired.get("mission", [])
+            if isinstance(repaired_mission, list) and repaired_mission:
+                mission = repaired_mission
+                response = str(repaired.get("response", response)).strip()
+                results = execute(mission)
+                failed = next((item for item in results if not item.get("ok")), None)
+
+        if failed:
+            response = response or "The mission failed."
+            response += f" Step {failed.get('step')} failed: {failed.get('error', 'unknown error')}."
+        else:
+            response = response or "Mission completed."
+
+        _remember(prompt, response)
+        return response
+
+    if mode != "reply":
+        raise ValueError(f"Unknown ULTRON mode: {mode!r}")
+
+    response_cache.put(prompt, response)
+    _remember(prompt, response)
+    return response
+
+
+def stream_prompt(prompt: str) -> Iterator[str]:
+    prompt = prompt.strip()
+    if not prompt:
+        return
+
+    mission = _direct_mission(prompt)
+    if mission is not None:
+        yield _execute_mission(prompt, mission)
+        return
+
+    cached = response_cache.get(prompt)
+    if cached is not None:
+        _remember(prompt, cached)
+        yield cached
+        return
+
+    route = route_prompt(prompt)
+
+    if route.agent == "operator":
+        yield handle_prompt(prompt)
+        return
+
+    context = _model_context() + [{"role": "user", "content": prompt}]
+    parts: list[str] = []
+
+    try:
+        for token in stream_chat(
+            context,
+            model=route.model,
+            max_output_tokens=route.max_output_tokens,
+            num_ctx=route.num_ctx,
+        ):
+            parts.append(token)
+            yield token
+    except Exception:
+        fallback = handle_prompt(prompt)
+        yield fallback
+        return
+
+    final = "".join(parts).strip()
+    if final:
+        response_cache.put(prompt, final)
+        _remember(prompt, final)

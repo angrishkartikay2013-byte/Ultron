@@ -10,20 +10,28 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
-    QLabel,
     QLineEdit,
+    QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from brain.agent import handle_prompt
-from brain.llm import FAST_MODEL, warm_model
+from brain.agent import stream_prompt
+from brain.llm import warm_speed_stack
 from voice import listen_once, speak
 
 
-def y_pressed() -> bool:
-    return bool(ctypes.windll.user32.GetAsyncKeyState(0x59) & 0x8000)
+VK_Y = 0x59
+VK_CONTROL = 0x11
+
+
+def interrupt_pressed() -> bool:
+    user32 = ctypes.windll.user32
+    return bool(
+        user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
+        and user32.GetAsyncKeyState(VK_Y) & 0x8000
+    )
 
 
 class VoiceWorker(QThread):
@@ -49,6 +57,7 @@ class VoiceWorker(QThread):
 
 class ReplyWorker(QThread):
     ready = Signal(str)
+    chunk = Signal(str)
     failed = Signal(str)
 
     def __init__(self, prompt: str, parent: QWidget) -> None:
@@ -57,7 +66,11 @@ class ReplyWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.ready.emit(handle_prompt(self.prompt))
+            parts: list[str] = []
+            for token in stream_prompt(self.prompt):
+                parts.append(token)
+                self.chunk.emit(token)
+            self.ready.emit("".join(parts).strip())
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -97,29 +110,29 @@ class CommandPopup(QFrame):
 
         self.status = QLabel("ULTRON • READY")
         self.status.setStyleSheet(
-            "color:#7cecff;font-size:11px;font-weight:700;letter-spacing:1px;"
+            "color:#8ea7c2;font-size:10px;font-weight:700;letter-spacing:1px;"
         )
 
         self.text = QLabel("Click the orb to speak.")
         self.text.setWordWrap(True)
         self.text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.text.setStyleSheet("color:#e9faff;font-size:14px;")
+        self.text.setStyleSheet("color:#f2f4f7;font-size:14px;")
 
         self.input = QLineEdit()
         self.input.setPlaceholderText("Type a command…")
         self.input.returnPressed.connect(self._send)
         self.input.setStyleSheet(
-            "QLineEdit{background:#071522;color:#e9faff;border:1px solid #205b75;"
-            "border-radius:10px;padding:10px;font-size:13px;}"
-            "QLineEdit:focus{border:1px solid #54d7ff;}"
+            "QLineEdit{background:#12161b;color:#f2f4f7;border:1px solid #252a31;"
+            "border-radius:9px;padding:9px;font-size:13px;}"
+            "QLineEdit:focus{border:1px solid #4f78b2;}"
         )
 
         send = QPushButton("SEND")
         send.clicked.connect(self._send)
         send.setStyleSheet(
-            "QPushButton{background:#0d4057;color:#a5f2ff;border:1px solid #3a8eaa;"
-            "border-radius:10px;padding:8px;font-weight:700;}"
-            "QPushButton:hover{background:#15566f;}"
+            "QPushButton{background:#1a2028;color:#dbe7f7;border:1px solid #313944;"
+            "border-radius:9px;padding:8px;font-weight:700;}"
+            "QPushButton:hover{background:#212832;}"
         )
 
         layout = QVBoxLayout(self)
@@ -142,30 +155,28 @@ class CommandPopup(QFrame):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(4, 14, 24, 245))
-        painter.setPen(QPen(QColor(65, 190, 230, 120), 1))
+        painter.setBrush(QColor(15, 17, 21, 248))
+        painter.setPen(QPen(QColor(48, 55, 65, 220), 1))
         painter.drawRoundedRect(
-            QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 18, 18
+            QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 16, 16
         )
 
 
 class GenesisOrb(QWidget):
     COLORS = {
-        "idle": QColor("#45d8ff"),
-        "listening": QColor("#6effff"),
-        "thinking": QColor("#ae7dff"),
-        "speaking": QColor("#55ffad"),
-        "error": QColor("#ff6370"),
+        "idle": QColor("#71829a"),
+        "listening": QColor("#6ea8fe"),
+        "thinking": QColor("#9b87d9"),
+        "speaking": QColor("#72d6a1"),
+        "error": QColor("#d77c7c"),
     }
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFixedSize(126, 126)
-        self.setWindowFlags(
-            Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-        )
+        self.setFixedSize(110, 110)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowTitle("ULTRON GENESIS")
+        self.setWindowTitle("ULTRON")
 
         self.phase = 0.0
         self.state = "idle"
@@ -173,10 +184,9 @@ class GenesisOrb(QWidget):
         self.voice: VoiceWorker | None = None
         self.reply: ReplyWorker | None = None
         self.speech: SpeechWorker | None = None
-        self.messages: list[Message] = []
-        self._y_down = False
+        self.chat_window = None
+        self._interrupt_down = False
         self._typing_token = 0
-        self.galaxy = None
 
         screen = QApplication.primaryScreen()
         if screen:
@@ -192,14 +202,14 @@ class GenesisOrb(QWidget):
         self.interrupt_timer.start(35)
 
     def animate(self) -> None:
-        self.phase += 0.05
+        self.phase += 0.035
         self.update()
 
     def poll_interrupt(self) -> None:
-        down = y_pressed()
-        if down and not self._y_down:
+        down = interrupt_pressed()
+        if down and not self._interrupt_down:
             self.interrupt()
-        self._y_down = down
+        self._interrupt_down = down
 
     def set_state(self, state: str) -> None:
         self.state = state
@@ -214,7 +224,6 @@ class GenesisOrb(QWidget):
         desired_x = self.x() + self.width() // 2 - 215
         desired_y = self.y() + self.height() + 10
         area = screen.availableGeometry()
-
         desired_x = max(area.left() + 10, min(desired_x, area.right() - 440))
         if desired_y + 250 > area.bottom():
             desired_y = self.y() - 250
@@ -235,15 +244,15 @@ class GenesisOrb(QWidget):
             self.show_popup()
 
     def mouseDoubleClickEvent(self, event) -> None:
-        from ui.genesis import open_memory_galaxy
-        self.galaxy = open_memory_galaxy()
+        from .chat import open_chat_window
+        self.chat_window = open_chat_window()
 
     def listen(self) -> None:
         if self.reply and self.reply.isRunning():
             return
         self.show_popup()
         self.set_state("listening")
-        self.popup.text.setText("Listening…  (press Y to interrupt)")
+        self.popup.text.setText("Listening…")
         self.stop_voice()
         self.voice = VoiceWorker(self)
         self.voice.heard.connect(self.submit)
@@ -259,23 +268,37 @@ class GenesisOrb(QWidget):
         self.stop_voice()
         self.show_popup()
         self.set_state("thinking")
-        self.popup.text.setText(f"Founder: {prompt}\n\nULTRON is thinking…")
-        self.messages.append(Message("Founder", prompt))
+        self.popup.text.setText(f"Founder: {prompt}\n\nULTRON is responding…")
 
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
             self.reply.wait(100)
 
         self.reply = ReplyWorker(prompt, self)
+        self.reply.chunk.connect(self.reply_chunk)
         self.reply.ready.connect(self.reply_ready)
         self.reply.failed.connect(self.reply_error)
         self.reply.finished.connect(self.reply_finished)
         self.reply.start()
 
+    def reply_chunk(self, token: str) -> None:
+        if not self.popup:
+            return
+        if self.state == "thinking":
+            self.set_state("thinking")
+        existing = self.popup.text.text()
+        prefix = existing.split("\n\nULTRON:", 1)[0]
+        if "\n\nULTRON:" not in existing:
+            prefix = existing
+            self.popup.text.setText(prefix + "\n\nULTRON:")
+            existing = self.popup.text.text()
+        self.popup.text.setText(self.popup.text.text() + token)
+        self.popup.adjustSize()
+
     def reply_ready(self, text: str) -> None:
-        self.messages.append(Message("ULTRON", text))
+        if not text.strip():
+            return
         self.set_state("speaking")
-        self.type_reply(text)
         if self.speech and self.speech.isRunning():
             self.speech.stop()
             self.speech.wait(150)
@@ -283,44 +306,17 @@ class GenesisOrb(QWidget):
         self.speech.finished.connect(self.speech_finished)
         self.speech.start()
 
-    def type_reply(self, text: str) -> None:
-        if not self.popup:
-            return
-
-        self._typing_token += 1
-        token = self._typing_token
-        index = 0
-        self.popup.text.setText("ULTRON:\n")
-
-        def tick() -> None:
-            nonlocal index
-            if token != self._typing_token or not self.popup:
-                return
-
-            index = min(len(text), index + 3)
-            self.popup.text.setText("ULTRON:\n" + text[:index])
-
-            if index < len(text):
-                QTimer.singleShot(14, tick)
-            else:
-                # SpeechWorker controls when the microphone can reopen.
-                self.set_state("speaking")
-
-        tick()
-
     def interrupt(self) -> None:
         self._typing_token += 1
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
-            self.speech.wait(200)
+            self.speech.wait(250)
             self.speech = None
-
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
-            self.reply.wait(150)
+            self.reply.wait(200)
             self.reply = None
-
         self.set_state("idle")
         self.show_popup()
         self.popup.text.setText("Interrupted. Standing by.")
@@ -329,7 +325,7 @@ class GenesisOrb(QWidget):
         self.speech = None
         if self.state == "speaking":
             self.set_state("idle")
-            QTimer.singleShot(250, self.listen)
+            QTimer.singleShot(700, self.listen)
 
     def reply_finished(self) -> None:
         self.reply = None
@@ -359,41 +355,38 @@ class GenesisOrb(QWidget):
         center = self.rect().center()
         color = self.COLORS[self.state]
 
-        pulse = math.sin(self.phase) * 2.5
-        for radius, alpha in ((52 + pulse, 12), (47 + pulse, 18), (42 + pulse, 28)):
+        pulse = math.sin(self.phase) * 1.8
+        for radius, alpha in ((45 + pulse, 10), (40 + pulse, 16), (35 + pulse, 20)):
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(color.red(), color.green(), color.blue(), alpha))
             painter.drawEllipse(center, radius, radius)
 
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 95), 1.5))
-        painter.drawEllipse(center, 38, 38)
-        painter.drawEllipse(center, 46 + pulse, 46 + pulse)
+        painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 85), 1.2))
+        painter.drawEllipse(center, 30, 30)
+        painter.drawEllipse(center, 38 + pulse, 38 + pulse)
 
-        start_angle = int((self.phase * 700) % 360) * 16
-        painter.setPen(QPen(color, 2.2))
+        painter.setPen(QPen(color, 1.8))
         painter.drawArc(
-            QRectF(center.x() - 50, center.y() - 50, 100, 100),
-            start_angle,
-            80 * 16,
+            QRectF(center.x() - 42, center.y() - 42, 84, 84),
+            int((self.phase * 500) % 360) * 16,
+            65 * 16,
         )
 
-        gradient = QRadialGradient(center, 30)
-        gradient.setColorAt(0.0, QColor(255, 255, 255, 245))
-        gradient.setColorAt(0.18, color.lighter(155))
-        gradient.setColorAt(0.65, color)
-        gradient.setColorAt(
-            1.0, QColor(color.red(), color.green(), color.blue(), 0)
-        )
+        gradient = QRadialGradient(center, 25)
+        gradient.setColorAt(0.0, QColor(255, 255, 255, 235))
+        gradient.setColorAt(0.2, color.lighter(135))
+        gradient.setColorAt(0.7, color)
+        gradient.setColorAt(1.0, QColor(color.red(), color.green(), color.blue(), 0))
 
-        painter.setPen(QPen(QColor(225, 251, 255, 190), 1))
+        painter.setPen(QPen(QColor(230, 236, 242, 170), 1))
         painter.setBrush(gradient)
-        painter.drawEllipse(center, 28, 28)
+        painter.drawEllipse(center, 23, 23)
 
-        painter.setPen(QColor(216, 247, 255, 190))
-        painter.setFont(QFont("Segoe UI", 7, QFont.Bold))
+        painter.setPen(QColor(190, 200, 214, 180))
+        painter.setFont(QFont("Segoe UI", 7, QFont.DemiBold))
         painter.drawText(
-            QRectF(0, 99, self.width(), 18),
+            QRectF(0, 88, self.width(), 14),
             Qt.AlignCenter,
             self.state.upper(),
         )
@@ -404,7 +397,6 @@ class GenesisOrb(QWidget):
         if self.speech and self.speech.isRunning():
             self.speech.stop()
             self.speech.wait(200)
-            self.speech = None
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
             self.reply.wait(200)
@@ -414,19 +406,17 @@ class GenesisOrb(QWidget):
 def run_genesis() -> int:
     app = QApplication.instance() or QApplication([])
     threading.Thread(
-        target=lambda: _warm_fast_model(),
+        target=lambda: _warm_stack(),
         daemon=True,
-        name="ULTRON-fast-model-warmup",
+        name="ULTRON-speed-stack-warmup",
     ).start()
     orb = GenesisOrb()
     orb.show()
-    app.aboutToQuit.connect(orb.close)
     return app.exec()
 
 
-def _warm_fast_model() -> None:
+def _warm_stack() -> None:
     try:
-        warm_model(FAST_MODEL)
+        warm_speed_stack()
     except Exception:
-        # The first real request will surface any model/runtime problem.
         pass
