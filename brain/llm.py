@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -8,7 +9,7 @@ from typing import Any, Iterator
 
 import requests
 
-from .router import AGENT_MODEL, FAST_MODEL, HEAVY_MODEL, MID_MODEL
+from .router import AGENT_MODEL, FAST_MODEL, HEAVY_MODEL, MID_MODEL, VISION_MODEL
 
 BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
@@ -173,10 +174,60 @@ def warm_speed_stack() -> tuple[str, str]:
 
 
 def _messages(
-    history: list[dict[str, str]],
+    history: list[dict[str, Any]],
     system: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     return [{"role": "system", "content": system}, *history]
+
+
+def vision_chat(
+    prompt: str,
+    image_bytes: bytes,
+    timeout: int = 90,
+    max_output_tokens: int = 128,
+) -> str:
+    selected_model = choose_model(VISION_MODEL) if VISION_MODEL in installed_models() else VISION_MODEL
+    if selected_model not in installed_models():
+        raise RuntimeError(
+            f"Vision model {VISION_MODEL!r} is not installed. "
+            "Run: uv run scripts/setup_fast_model.py"
+        )
+
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "You are ULTRON's visual cortex. Inspect the supplied Windows "
+                "screenshot accurately. Never claim to see something that is not "
+                "visible. Return only what the image supports."
+            ),
+        },
+        {
+            "role": "user",
+            "content": prompt,
+            "images": [image_b64],
+        },
+    ]
+
+    response = _SESSION.post(
+        URL,
+        json={
+            "model": selected_model,
+            "messages": messages,
+            "stream": False,
+            "think": False,
+            "keep_alive": "5m",
+            "options": _payload_options(selected_model, max_output_tokens, 768),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    content = response.json().get("message", {}).get("content")
+    if not isinstance(content, str):
+        raise RuntimeError("Vision model returned an invalid response.")
+    return content.strip()
 
 
 def chat(
