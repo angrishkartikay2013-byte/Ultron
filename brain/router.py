@@ -4,8 +4,9 @@ from dataclasses import dataclass
 import os
 
 
-# Logical agents share models where that is faster/cheaper on this CPU.
-AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:1.5b")
+# Agents are logical roles. The tiny reflex model is optional; if it is not
+# installed, the runtime falls back to the existing 1.5B model.
+AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:0.5b-instruct")
 FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 MID_MODEL = os.getenv("ULTRON_MID_MODEL", "qwen2.5:3b")
 HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
@@ -17,6 +18,7 @@ class Route:
     model: str
     max_output_tokens: int
     num_ctx: int
+    history_turns: int
 
 
 _OPERATOR_TERMS = (
@@ -74,14 +76,16 @@ _MID_TERMS = (
 
 def route_prompt(prompt: str) -> Route:
     text = prompt.strip().casefold()
+    length = len(text)
 
     if any(term in text for term in _OPERATOR_TERMS):
-        return Route("operator", AGENT_MODEL, 80, 768)
+        return Route("operator", AGENT_MODEL, 64, 640, 1)
 
-    if len(text) > 220 or any(term in text for term in _HEAVY_TERMS):
-        return Route("builder", HEAVY_MODEL, 240, 3072)
+    if length > 220 or any(term in text for term in _HEAVY_TERMS):
+        return Route("builder", HEAVY_MODEL, 192, 2048, 4)
 
-    if len(text) > 90 or any(term in text for term in _MID_TERMS):
-        return Route("reasoner", MID_MODEL, 160, 1536)
+    if length > 90 or any(term in text for term in _MID_TERMS):
+        return Route("reasoner", MID_MODEL, 128, 1024, 3)
 
-    return Route("conversation", FAST_MODEL, 96, 1024)
+    # Normal conversation is intentionally tiny: short context + short output.
+    return Route("conversation", FAST_MODEL, 72, 768, 2)
