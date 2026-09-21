@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "pyautogui>=0.9.54",
     "pyopengl>=3.1.10",
-    "py3-tts>=4.1",
+    "piper-tts>=1.8.0",
     "pyside6>=6.11.2",
     "requests>=2.34.2",
     "sounddevice>=0.5.6",
