@@ -40,10 +40,28 @@ def reset_memory() -> None:
     _save()
 
 
+QUICK_REPLIES = {
+    "hi": "Hello, Founder. I am online.",
+    "hello": "Hello, Founder. I am online.",
+    "hey": "Hey, Founder. ULTRON is online.",
+    "good morning": "Good morning, Founder.",
+    "good night": "Good night, Founder.",
+    "thanks": "Always, Founder.",
+    "thank you": "Always, Founder.",
+}
+
 def ask(prompt: str) -> str:
     prompt = prompt.strip()
     if not prompt:
         return ""
+
+    quick = QUICK_REPLIES.get(prompt.casefold())
+    if quick:
+        history.append({"role": "user", "content": prompt})
+        history.append({"role": "assistant", "content": quick})
+        del history[:-MAX_MESSAGES]
+        _save()
+        return quick
 
     history.append({"role": "user", "content": prompt})
     del history[:-MAX_MESSAGES]
