@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from brain.agent import stream_prompt
 from brain.llm import warm_model
-from brain.router import AGENT_MODEL, route_prompt
+from brain.router import AGENT_MODEL, FAST_MODEL, route_prompt
 from voice import listen_once, speak_streaming
 
 
@@ -35,6 +35,168 @@ def interrupt_pressed() -> bool:
         user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
         and user32.GetAsyncKeyState(VK_Y) & 0x8000
     )
+
+
+class StartupWorker(QThread):
+    status = Signal(str)
+    progress = Signal(int)
+    ready = Signal()
+    failed = Signal(str)
+
+    def run(self) -> None:
+        try:
+            self.status.emit("Connecting to Ollama…")
+            self.progress.emit(8)
+
+            self.status.emit("Loading reflex brain…")
+            self.progress.emit(28)
+            reflex = warm_model(AGENT_MODEL)
+
+            self.status.emit(f"Reflex ready • {reflex}")
+            self.progress.emit(52)
+
+            # Only warm the second brain when it is actually a different model.
+            # This avoids loading the same 1.5B model twice when the tiny model
+            # is not installed yet.
+            if reflex != FAST_MODEL:
+                self.status.emit("Loading fast brain…")
+                self.progress.emit(68)
+                fast = warm_model(FAST_MODEL)
+                self.status.emit(f"Fast brain ready • {fast}")
+            else:
+                self.status.emit("Fast brain already loaded.")
+            self.progress.emit(92)
+
+            self.status.emit("ULTRON is ready.")
+            self.progress.emit(100)
+            self.ready.emit()
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class StartupSplash(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFixedSize(430, 245)
+        self.setWindowFlags(
+            Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.phase = 0.0
+        self.status_text = "Initializing…"
+        self.progress_value = 0
+
+        screen = QApplication.primaryScreen()
+        if screen:
+            area = screen.availableGeometry()
+            self.move(
+                area.left() + (area.width() - self.width()) // 2,
+                area.top() + (area.height() - self.height()) // 2,
+            )
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.animate)
+        self.timer.start(16)
+
+    def set_status(self, value: str) -> None:
+        self.status_text = value
+        self.update()
+
+    def set_progress(self, value: int) -> None:
+        self.progress_value = max(0, min(100, value))
+        self.update()
+
+    def animate(self) -> None:
+        self.phase += 0.075
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
+        painter.setBrush(QColor(11, 14, 18, 250))
+        painter.setPen(QPen(QColor(49, 58, 70, 235), 1))
+        painter.drawRoundedRect(rect, 22, 22)
+
+        cx = self.width() / 2
+        cy = 72
+        pulse = math.sin(self.phase) * 3.0
+
+        # Animated Genesis core.
+        for radius, alpha in (
+            (42 + pulse, 10),
+            (35 + pulse, 17),
+            (29 + pulse, 26),
+        ):
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(114, 214, 161, alpha))
+            painter.drawEllipse(
+                QPoint(int(cx), int(cy)),
+                int(radius),
+                int(radius),
+            )
+
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(114, 214, 161, 145), 2))
+        painter.drawArc(
+            QRectF(cx - 28, cy - 28, 56, 56),
+            int((self.phase * 900) % 360) * 16,
+            250 * 16,
+        )
+
+        painter.setBrush(QColor(114, 214, 161, 235))
+        painter.setPen(QPen(QColor(238, 244, 250, 170), 1))
+        painter.drawEllipse(
+            QPoint(int(cx), int(cy)),
+            16 + int(abs(pulse) * 0.5),
+            16 + int(abs(pulse) * 0.5),
+        )
+
+        painter.setPen(QColor(232, 238, 244, 245))
+        painter.setFont(QFont("Segoe UI", 18, QFont.DemiBold))
+        painter.drawText(
+            QRectF(0, 22, self.width(), 28),
+            Qt.AlignCenter,
+            "ULTRON GENESIS",
+        )
+
+        painter.setPen(QColor(145, 157, 173, 235))
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.drawText(
+            QRectF(20, 112, self.width() - 40, 25),
+            Qt.AlignCenter,
+            self.status_text,
+        )
+
+        bar = QRectF(34, 157, self.width() - 68, 8)
+        painter.setBrush(QColor(29, 35, 43, 255))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(bar, 4, 4)
+
+        fill = QRectF(
+            bar.left(),
+            bar.top(),
+            bar.width() * (self.progress_value / 100.0),
+            bar.height(),
+        )
+        painter.setBrush(QColor(114, 214, 161, 235))
+        painter.drawRoundedRect(fill, 4, 4)
+
+        # Small moving dots under the progress bar.
+        painter.setBrush(Qt.NoBrush)
+        for i in range(3):
+            x = self.width() / 2 + math.sin(self.phase + i * 1.7) * (18 + i * 7)
+            painter.setPen(QPen(QColor(114, 214, 161, 180), 1.5))
+            painter.drawPoint(QPoint(int(x), 188))
+
+        painter.setPen(QColor(107, 120, 137, 220))
+        painter.setFont(QFont("Segoe UI", 9))
+        painter.drawText(
+            QRectF(0, 198, self.width(), 20),
+            Qt.AlignCenter,
+            f"{self.progress_value}%",
+        )
 
 
 class VoiceWorker(QThread):
@@ -521,13 +683,44 @@ class GenesisOrb(QWidget):
 def run_genesis() -> int:
     app = QApplication.instance() or QApplication([])
 
-    # Warm only the reflex brain before the orb becomes interactive.
-    # This prevents startup model-loading from competing with the user's first command.
-    try:
-        warm_model(AGENT_MODEL)
-    except Exception:
-        pass
+    splash = StartupSplash()
+    splash.show()
 
-    orb = GenesisOrb()
-    orb.show()
+    worker = StartupWorker(splash)
+
+    def on_ready() -> None:
+        splash.close()
+        splash.deleteLater()
+        worker.deleteLater()
+
+        orb = GenesisOrb()
+        orb.show()
+
+    def on_failed(message: str) -> None:
+        splash.set_status("Startup warning — continuing…")
+        splash.set_progress(100)
+
+        def continue_start() -> None:
+            splash.close()
+            splash.deleteLater()
+            worker.deleteLater()
+
+            orb = GenesisOrb()
+            orb.show()
+            orb.show_popup()
+            orb.set_state("error")
+            orb.popup.text.setText("Model warm-up warning:\n" + message)
+            orb.popup.set_activity(
+                "Startup could not fully warm the models. "
+                "The first request may take longer."
+            )
+
+        QTimer.singleShot(1200, continue_start)
+
+    worker.status.connect(splash.set_status)
+    worker.progress.connect(splash.set_progress)
+    worker.ready.connect(on_ready)
+    worker.failed.connect(on_failed)
+    worker.start()
+
     return app.exec()
