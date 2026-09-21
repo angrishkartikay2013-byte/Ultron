@@ -10,10 +10,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 OLLAMA = Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"))
 MODEL_DIR = ROOT / "models"
-MODELS = [
-    "qwen2.5:0.5b-instruct",
-    "qwen2.5:1.5b",
-]
+MODEL = "qwen2.5:0.5b-instruct"
 BASE_URL = "http://127.0.0.1:11434"
 
 
@@ -60,22 +57,18 @@ def main() -> None:
         raise FileNotFoundError(f"Ollama executable not found: {OLLAMA}")
 
     print(f"ULTRON model directory: {MODEL_DIR}")
-    print("Restarting Ollama with the E: model directory...")
+    print(f"Installing only the optional reflex model: {MODEL}")
     stop_ollama()
     start_ollama()
 
     env = os.environ.copy()
     env["OLLAMA_MODELS"] = str(MODEL_DIR)
 
-    for model in MODELS:
-        print(f"\nPulling {model} into {MODEL_DIR}...")
-        subprocess.run([str(OLLAMA), "pull", model], env=env, check=True)
-        print(f"{model} is ready.")
+    subprocess.run([str(OLLAMA), "pull", MODEL], env=env, check=True)
 
-    print("\nULTRON speed stack is ready.")
-    print("Agent: qwen2.5:0.5b-instruct")
-    print("Fast:  qwen2.5:1.5b")
+    print(f"\n{MODEL} is ready.")
     print(f"Stored under: {MODEL_DIR}")
+    print("Existing 1.5B / 3B / 8B models are left untouched.")
 
 
 if __name__ == "__main__":
