@@ -57,13 +57,10 @@ def main() -> int:
     results.append(check("Ollama models", models))
 
     def voice_model():
-        indian = Path("voice_models/vosk-model-small-en-in-0.4")
-        us = Path("voice_models/vosk-model-small-en-us-0.15")
-        if indian.exists():
-            return "Indian English model active"
-        if us.exists():
-            return "US English model active; Indian model not installed"
-        raise FileNotFoundError("No Vosk model found.")
+        piper = Path("voice_models/piper/en_US-ryan-high.onnx")
+        if not piper.exists():
+            raise FileNotFoundError("Piper neural voice not installed.")
+        return "Whisper.cpp + Piper neural TTS"
 
     results.append(check("Voice model", voice_model))
 
