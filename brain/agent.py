@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from brain import history, _save
+from .core import history, _save
 from brain.llm import chat
 from tools.executor import execute
 from tools.registry import prompt_catalog
