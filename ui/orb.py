@@ -20,8 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from brain.agent import stream_prompt
-from brain.llm import warm_speed_stack
-from brain.router import route_prompt
+from brain.llm import warm_model
+from brain.router import AGENT_MODEL, route_prompt
 from voice import listen_once, speak_streaming
 
 
@@ -520,18 +520,14 @@ class GenesisOrb(QWidget):
 
 def run_genesis() -> int:
     app = QApplication.instance() or QApplication([])
-    threading.Thread(
-        target=_warm_stack,
-        daemon=True,
-        name="ULTRON-fast-model-warmup",
-    ).start()
+
+    # Warm only the reflex brain before the orb becomes interactive.
+    # This prevents startup model-loading from competing with the user's first command.
+    try:
+        warm_model(AGENT_MODEL)
+    except Exception:
+        pass
+
     orb = GenesisOrb()
     orb.show()
     return app.exec()
-
-
-def _warm_stack() -> None:
-    try:
-        warm_speed_stack()
-    except Exception:
-        pass
