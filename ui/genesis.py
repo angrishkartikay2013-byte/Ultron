@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
 
-from .graph_widget import MemoryGraph
+from .galaxy_widget import GalaxyWidget
 from .sidebar import MemoryVault
 
 
@@ -54,7 +54,7 @@ class GenesisMemory(QMainWindow):
         body.setSpacing(0)
 
         self.sidebar = MemoryVault()
-        self.graph = MemoryGraph(self.sidebar.update_info)
+        self.graph = GalaxyWidget(self.sidebar.update_info)
 
         body.addWidget(self.graph, 1)
         body.addWidget(self.sidebar)
