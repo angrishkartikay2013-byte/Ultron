@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 from brain.agent import stream_prompt
 from brain.llm import warm_model
 from brain.router import AGENT_MODEL, FAST_MODEL, route_prompt
-from voice import listen_once, speak_streaming
 
 
 VK_Y = 0x59
@@ -66,6 +65,14 @@ class StartupWorker(QThread):
             else:
                 self.status.emit("Fast brain already loaded.")
             self.progress.emit(92)
+
+            self.status.emit("Loading voice engine…")
+            self.progress.emit(82)
+            from voice import load_voice_models
+            whisper_name, piper_name = load_voice_models()
+
+            self.status.emit(f"Voice ready • {whisper_name} + {piper_name}")
+            self.progress.emit(96)
 
             self.status.emit("ULTRON is ready.")
             self.progress.emit(100)
@@ -212,6 +219,7 @@ class VoiceWorker(QThread):
 
     def run(self) -> None:
         try:
+            from voice import listen_once
             text = listen_once(stop_event=self.stop_event)
             if text and not self.stop_event.is_set():
                 self.heard.emit(text)
@@ -263,6 +271,7 @@ class SpeechWorker(QThread):
 
     def run(self) -> None:
         try:
+            from voice import speak_streaming
             speak_streaming(
                 self.incoming,
                 self.stop_event,
