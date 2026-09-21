@@ -34,16 +34,29 @@ if not PIPER_MODEL.exists():
     )
 
 WHISPER_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-stt_model = Model(
-    WHISPER_MODEL_NAME,
-    models_dir=str(WHISPER_MODELS_DIR),
-    print_progress=False,
-    print_realtime=False,
-    n_threads=WHISPER_THREADS,
-)
-speech_model = PiperVoice.load(str(PIPER_MODEL))
+stt_model: Model | None = None
+speech_model: PiperVoice | None = None
 audio_queue: queue.Queue[np.ndarray] = queue.Queue()
 _speech_lock = threading.Lock()
+
+
+def load_voice_models() -> tuple[str, str]:
+    """Load Whisper and Piper exactly once, on demand."""
+    global stt_model, speech_model
+
+    if stt_model is None:
+        stt_model = Model(
+            WHISPER_MODEL_NAME,
+            models_dir=str(WHISPER_MODELS_DIR),
+            print_progress=False,
+            print_realtime=False,
+            n_threads=WHISPER_THREADS,
+        )
+
+    if speech_model is None:
+        speech_model = PiperVoice.load(str(PIPER_MODEL))
+
+    return WHISPER_MODEL_NAME, PIPER_MODEL.name
 
 
 def _callback(indata, frames, time_info, status) -> None:
@@ -109,6 +122,9 @@ def _write_wav(samples: np.ndarray) -> Path:
 
 
 def _transcribe(path: Path) -> str:
+    if stt_model is None:
+        load_voice_models()
+
     segments = stt_model.transcribe(
         str(path),
         language="en",
@@ -266,6 +282,9 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
     if not chunks:
         return
 
+    if speech_model is None:
+        load_voice_models()
+
     with _speech_lock:
         stream = sd.RawOutputStream(
             samplerate=speech_model.config.sample_rate,
@@ -296,6 +315,9 @@ def speak_streaming(
 ) -> None:
     """Speak complete sentences as they arrive from the streaming LLM."""
     buffer = ""
+
+    if speech_model is None:
+        load_voice_models()
 
     def emit_sentence(sentence: str) -> None:
         clean = sentence.strip()
