@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import pkgutil
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -11,6 +12,7 @@ class ToolSpec:
     name: str
     description: str
     run: Callable[..., Any]
+    signature: str
 
 
 def discover() -> dict[str, ToolSpec]:
@@ -33,10 +35,11 @@ def discover() -> dict[str, ToolSpec]:
         description = metadata.get("description", "")
 
         if isinstance(name, str) and name.strip():
-            found[name] = ToolSpec(
+            found[name.strip()] = ToolSpec(
                 name=name.strip(),
                 description=str(description),
                 run=runner,
+                signature=str(inspect.signature(runner)),
             )
 
     return found
@@ -47,7 +50,9 @@ def prompt_catalog() -> str:
     if not tools:
         return "No tools are currently available."
 
-    return "\n".join(
-        f"- {spec.name}: {spec.description}"
-        for spec in sorted(tools.values(), key=lambda item: item.name)
-    )
+    lines = []
+    for spec in sorted(tools.values(), key=lambda item: item.name):
+        lines.append(
+            f"- {spec.name}{spec.signature}: {spec.description}"
+        )
+    return "\n".join(lines)
