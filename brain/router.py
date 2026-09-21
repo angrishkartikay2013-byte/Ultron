@@ -10,6 +10,7 @@ AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:0.5b-instruct")
 FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 MID_MODEL = os.getenv("ULTRON_MID_MODEL", "qwen2.5:3b")
 HEAVY_MODEL = os.getenv("ULTRON_HEAVY_MODEL", "qwen3:8b")
+VISION_MODEL = os.getenv("ULTRON_VISION_MODEL", "qwen2.5vl:3b")
 
 
 @dataclass(frozen=True)
