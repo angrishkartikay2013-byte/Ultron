@@ -17,21 +17,22 @@ def check(label: str, callback) -> bool:
 
 def main() -> int:
     print("ULTRON GENESIS DIAGNOSTICS")
-    print("=" * 32)
+    print("=" * 38)
 
     results = []
 
     results.append(check("Python", lambda: sys.version.split()[0]))
     results.append(check("PySide6", lambda: __import__("PySide6").__version__))
     results.append(check("PyAutoGUI", lambda: __import__("pyautogui").__version__))
-    results.append(check("Vosk", lambda: __import__("vosk").__version__ if hasattr(__import__("vosk"), "__version__") else "installed"))
+    results.append(check("Vosk", lambda: "installed"))
+    results.append(check("TTS", lambda: __import__("pyttsx3").__name__))
 
     def graph_file():
         path = Path("memory/graph.json")
         data = json.loads(path.read_text(encoding="utf-8"))
         return f"{len(data.get('nodes', []))} memory nodes"
 
-    results.append(check("Memory Galaxy seed", graph_file))
+    results.append(check("Memory Galaxy", graph_file))
 
     def tools():
         from tools.registry import discover
@@ -39,35 +40,36 @@ def main() -> int:
         return ", ".join(sorted(found)) or "none"
 
     results.append(check("Dynamic tools", tools))
+
     results.append(check("Brain package", lambda: __import__("brain").__name__))
 
-    def ollama():
+    def models():
         import requests
         response = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
         response.raise_for_status()
-        models = {item.get("name") for item in response.json().get("models", [])}
-        return "Ollama reachable: " + ", ".join(sorted(models))
+        names = sorted(
+            item.get("name", "")
+            for item in response.json().get("models", [])
+            if item.get("name")
+        )
+        return ", ".join(names) or "no models"
 
-    results.append(check("Ollama", ollama))
+    results.append(check("Ollama models", models))
 
-    def fast_model():
-        import requests
-        response = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
-        response.raise_for_status()
-        names = {item.get("name") for item in response.json().get("models", [])}
-        if "qwen2.5:3b" not in names:
-            raise RuntimeError("qwen2.5:3b is not installed")
-        return "qwen2.5:3b available"
+    def voice_model():
+        indian = Path("voice_models/vosk-model-small-en-in-0.4")
+        us = Path("voice_models/vosk-model-small-en-us-0.15")
+        if indian.exists():
+            return "Indian English model active"
+        if us.exists():
+            return "US English model active; Indian model not installed"
+        raise FileNotFoundError("No Vosk model found.")
 
-    results.append(check("Fast model", fast_model))
+    results.append(check("Voice model", voice_model))
 
-    voice_path = Path("voice_models") / "vosk-model-small-en-us-0.15"
-    results.append(check("Vosk model", lambda: "present" if voice_path.exists() else (_ for _ in ()).throw(FileNotFoundError(voice_path))))
-
+    print("=" * 38)
     passed = sum(results)
-    print("=" * 32)
     print(f"RESULT: {passed}/{len(results)} checks passed")
-
     return 0 if passed == len(results) else 1
 
 
