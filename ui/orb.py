@@ -6,7 +6,7 @@ import queue
 import threading
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QRectF, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QPoint, QEasingCurve, QPropertyAnimation, QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication,
@@ -698,12 +698,34 @@ def run_genesis() -> int:
     worker = StartupWorker(splash)
 
     def on_ready() -> None:
-        splash.close()
-        splash.deleteLater()
-        worker.deleteLater()
-
         orb = GenesisOrb()
+        orb.setWindowOpacity(0.0)
         orb.show()
+        orb.raise_()
+        app.processEvents()
+
+        fade_in = QPropertyAnimation(orb, b"windowOpacity", orb)
+        fade_in.setDuration(260)
+        fade_in.setStartValue(0.0)
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.OutCubic)
+
+        fade_out = QPropertyAnimation(splash, b"windowOpacity", splash)
+        fade_out.setDuration(220)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.setEasingCurve(QEasingCurve.InCubic)
+
+        fade_out.finished.connect(splash.close)
+        fade_out.finished.connect(splash.deleteLater)
+        fade_out.finished.connect(worker.deleteLater)
+
+        # Keep animation objects alive until both transitions finish.
+        orb._boot_fade_in = fade_in
+        splash._boot_fade_out = fade_out
+
+        fade_in.start()
+        fade_out.start()
 
     def on_failed(message: str) -> None:
         splash.set_status("Startup warning — continuing…")
