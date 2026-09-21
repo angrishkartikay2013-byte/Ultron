@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OLLAMA = Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"))
 MODEL_DIR = ROOT / "models"
 MODEL = "qwen2.5:0.5b-instruct"
+VISION_MODEL = "qwen2.5vl:3b"
 BASE_URL = "http://127.0.0.1:11434"
 
 
@@ -57,7 +58,8 @@ def main() -> None:
         raise FileNotFoundError(f"Ollama executable not found: {OLLAMA}")
 
     print(f"ULTRON model directory: {MODEL_DIR}")
-    print(f"Installing only the optional reflex model: {MODEL}")
+    print(f"Installing reflex model: {MODEL}")
+    print(f"Installing visual cortex: {VISION_MODEL}")
     stop_ollama()
     start_ollama()
 
@@ -65,8 +67,9 @@ def main() -> None:
     env["OLLAMA_MODELS"] = str(MODEL_DIR)
 
     subprocess.run([str(OLLAMA), "pull", MODEL], env=env, check=True)
+    subprocess.run([str(OLLAMA), "pull", VISION_MODEL], env=env, check=True)
 
-    print(f"\n{MODEL} is ready.")
+    print(f"\n{MODEL} and {VISION_MODEL} are ready.")
     print(f"Stored under: {MODEL_DIR}")
     print("Existing 1.5B / 3B / 8B models are left untouched.")
 
