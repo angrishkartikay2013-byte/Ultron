@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import queue
 import threading
 from dataclasses import dataclass
 
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 from brain.agent import stream_prompt
 from brain.llm import warm_speed_stack
 from brain.router import route_prompt
-from voice import listen_once, speak
+from voice import listen_once, speak_streaming
 
 
 VK_Y = 0x59
@@ -78,19 +79,33 @@ class ReplyWorker(QThread):
 
 
 class SpeechWorker(QThread):
+    started_speaking = Signal()
     finished = Signal()
 
-    def __init__(self, text: str, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.text = text
         self.stop_event = threading.Event()
+        self.incoming: queue.Queue[str | None] = queue.Queue()
+
+    def feed(self, text: str) -> None:
+        if text and not self.stop_event.is_set():
+            self.incoming.put(text)
+
+    def finish_input(self) -> None:
+        if not self.stop_event.is_set():
+            self.incoming.put(None)
 
     def stop(self) -> None:
         self.stop_event.set()
+        self.incoming.put(None)
 
     def run(self) -> None:
         try:
-            speak(self.text, stop_event=self.stop_event)
+            speak_streaming(
+                self.incoming,
+                self.stop_event,
+                started_callback=self.started_speaking.emit,
+            )
         finally:
             self.finished.emit()
 
@@ -222,6 +237,8 @@ class GenesisOrb(QWidget):
         self._interrupt_down = False
         self._active_prompt = ""
         self._response_text = ""
+        self._generation_finished = False
+        self._speech_finished = False
 
         screen = QApplication.primaryScreen()
         if screen:
@@ -312,19 +329,30 @@ class GenesisOrb(QWidget):
         self.popup.text.setText(f"Founder: {prompt}\n\nULTRON:")
         self.popup.set_activity(
             f"Route: {route.agent.upper()}  •  Model: {route.model}\n"
-            "Stage: interpreting input and preparing response."
+            "Stage: generating reply + preparing speech…"
         )
 
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
             self.reply.wait(100)
 
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(250)
+
+        self.speech = SpeechWorker(self)
+        self.speech.started_speaking.connect(self.speech_started)
+        self.speech.finished.connect(self.speech_finished)
+        self.speech.start()
+
         self.reply = ReplyWorker(prompt, self)
         self.reply.chunk.connect(self.reply_chunk)
         self.reply.ready.connect(self.reply_ready)
         self.reply.failed.connect(self.reply_error)
         self.reply.finished.connect(self.reply_finished)
+
         self.reply.start()
+
 
     def reply_chunk(self, token: str) -> None:
         if not self.popup:
@@ -333,20 +361,49 @@ class GenesisOrb(QWidget):
         self.popup.text.setText(
             f"Founder: {self._active_prompt}\n\nULTRON:\n{self._response_text}"
         )
-        self.popup.set_activity("Stage: generating response…")
+        if self.speech and self.speech.isRunning():
+            self.speech.feed(token)
+        self.popup.set_activity(
+            "Stage: generating + speaking when sentences are ready…"
+        )
         self.popup.adjustSize()
 
     def reply_ready(self, text: str) -> None:
-        if not text.strip():
-            return
-        self.set_state("speaking")
-        self.popup.set_activity("Stage: speaking response.")
+        self._generation_finished = True
         if self.speech and self.speech.isRunning():
-            self.speech.stop()
-            self.speech.wait(150)
-        self.speech = SpeechWorker(text, self)
+            self.speech.finish_input()
+        elif text.strip():
+            self._start_emergency_speech(text)
+
+    def speech_started(self) -> None:
+        self.set_state("speaking")
+        if self.popup:
+            self.popup.set_activity(
+                "Stage: speaking while the AI is still generating…"
+            )
+
+    def _start_emergency_speech(self, text: str) -> None:
+        self._speech_finished = False
+        self.speech = SpeechWorker(self)
+        self.speech.started_speaking.connect(self.speech_started)
         self.speech.finished.connect(self.speech_finished)
         self.speech.start()
+        self.speech.feed(text)
+        self.speech.finish_input()
+
+    def speech_finished(self) -> None:
+        self._speech_finished = True
+        self.speech = None
+        self.set_state("idle")
+        if self.popup:
+            self.popup.set_activity(
+                "Stage: response fully spoken. Listening for your next command…"
+            )
+        self._maybe_listen()
+
+    def _maybe_listen(self) -> None:
+        if self._generation_finished and self._speech_finished:
+            QTimer.singleShot(350, self.listen)
 
     def interrupt(self) -> None:
         self.stop_voice()
@@ -358,21 +415,12 @@ class GenesisOrb(QWidget):
             self.reply.terminate()
             self.reply.wait(200)
             self.reply = None
+        self._generation_finished = False
+        self._speech_finished = False
         self.set_state("idle")
         self.show_popup()
         self.popup.text.setText("Interrupted. Standing by.")
         self.popup.set_activity("Stage: interrupted by Founder.")
-
-    def speech_finished(self) -> None:
-        self.speech = None
-        if self.state == "speaking":
-            self.set_state("idle")
-            if self.popup:
-                self.popup.set_activity("Stage: ready.")
-            QTimer.singleShot(650, self.listen)
-
-    def reply_finished(self) -> None:
-        self.reply = None
 
     def stop_voice(self) -> None:
         if self.voice and self.voice.isRunning():
