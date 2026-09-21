@@ -64,7 +64,7 @@ class StartupWorker(QThread):
                 self.status.emit(f"Fast brain ready • {fast}")
             else:
                 self.status.emit("Fast brain already loaded.")
-            self.progress.emit(92)
+            self.progress.emit(72)
 
             self.status.emit("Loading voice engine…")
             self.progress.emit(82)
