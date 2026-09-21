@@ -9,7 +9,17 @@ from .llm import FAST_MODEL, HEAVY_MODEL, chat
 from tools.executor import execute
 from tools.registry import prompt_catalog
 
-ROUTER_PROMPT = """You are ULTRON's fast action router.
+QUICK_REPLIES = {
+    "hi": "Hello, Founder. I am online.",
+    "hello": "Hello, Founder. I am online.",
+    "hey": "Hey, Founder. ULTRON is online.",
+    "good morning": "Good morning, Founder.",
+    "good night": "Good night, Founder.",
+    "thanks": "Always, Founder.",
+    "thank you": "Always, Founder.",
+}
+
+ROUTER_PROMPT = """You are ULTRON's action router.
 Return exactly one JSON object and no markdown.
 
 Conversation:
@@ -113,26 +123,38 @@ def _run_model_router(prompt: str) -> dict[str, Any]:
     context = list(history[-12:]) + [{"role": "user", "content": prompt}]
 
     model = HEAVY_MODEL if _is_heavy_task(prompt) else FAST_MODEL
-    extra = (
-        ROUTER_PROMPT
-        + "\n\nAVAILABLE TOOLS:\n"
-        + catalog
-        + f"\n\nSelected model: {model}"
-    )
+    extra = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n" + catalog
 
-    routed = chat(
-        context,
-        system_extra=extra,
-        model=model,
-        max_output_tokens=220 if model == FAST_MODEL else 420,
-    )
-    return _extract_json(routed)
+    try:
+        routed = chat(
+            context,
+            system_extra=extra,
+            model=model,
+            max_output_tokens=220 if model == FAST_MODEL else 420,
+        )
+        return _extract_json(routed)
+    except Exception:
+        if model == HEAVY_MODEL:
+            raise
+
+        routed = chat(
+            context,
+            system_extra=extra + "\n\nThe fast router failed. Be especially strict about JSON and tool arguments.",
+            model=HEAVY_MODEL,
+            max_output_tokens=420,
+        )
+        return _extract_json(routed)
 
 
 def handle_prompt(prompt: str) -> str:
     prompt = prompt.strip()
     if not prompt:
         return ""
+
+    quick = QUICK_REPLIES.get(prompt.casefold())
+    if quick:
+        _remember(prompt, quick)
+        return quick
 
     mission = _direct_mission(prompt)
     if mission is not None:
