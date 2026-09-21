@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import wave
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -100,13 +101,14 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
             audio_queue.get_nowait()
         except queue.Empty:
             break
-    threshold = 0.018
+    threshold = 0.012
     silence_seconds = 0.70
     max_seconds = 10.0
     sample_rate = 16000
     started = False
     silence_started = None
     chunks: list[np.ndarray] = []
+    pre_roll: deque[np.ndarray] = deque(maxlen=3)
     total_samples = 0
     with sd.InputStream(samplerate=sample_rate, blocksize=1024, channels=1, dtype="float32", callback=_callback, device=selected, latency="low"):
         while True:
@@ -119,10 +121,11 @@ def listen_once(device: int | None = None, stop_event: threading.Event | None = 
             rms = float(np.sqrt(np.mean(np.square(chunk))) + 1e-9)
             now = time.monotonic()
             if not started:
+                pre_roll.append(chunk)
                 if rms >= threshold:
                     started = True
-                    chunks.append(chunk)
-                    total_samples += len(chunk)
+                    chunks.extend(list(pre_roll))
+                    total_samples += sum(len(item) for item in pre_roll)
                 continue
             chunks.append(chunk)
             total_samples += len(chunk)
