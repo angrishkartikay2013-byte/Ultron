@@ -88,4 +88,4 @@ def route_prompt(prompt: str) -> Route:
         return Route("reasoner", MID_MODEL, 128, 1024, 3)
 
     # Normal conversation is intentionally tiny: short context + short output.
-    return Route("conversation", FAST_MODEL, 72, 768, 2)
+    return Route("conversation", AGENT_MODEL, 64, 512, 1)
