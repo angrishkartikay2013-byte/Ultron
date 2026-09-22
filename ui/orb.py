@@ -291,7 +291,7 @@ class GenesisOrb(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFixedSize(150, 150)
+        self.setFixedSize(380, 225)
         self.setWindowFlags(
             Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
@@ -312,12 +312,42 @@ class GenesisOrb(QWidget):
         self._speech_finished = False
         self.boot_status = "Reflex brain starting…"
 
+        self._dragging = False
+        self._drag_offset = QPoint()
+        self._last_mouse_pos = QPoint()
+
+        self.caption = QLabel("", self)
+        self.caption.setGeometry(24, 139, 332, 45)
+        self.caption.setAlignment(Qt.AlignCenter)
+        self.caption.setWordWrap(True)
+        self.caption.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.caption.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.caption.setStyleSheet(
+            "QLabel{color:#eef3f8;font-size:12px;font-weight:500;"
+            "background:transparent;padding:2px 6px;}"
+        )
+
+        self.activity_label = QLabel("", self)
+        self.activity_label.setGeometry(34, 186, 312, 28)
+        self.activity_label.setAlignment(Qt.AlignCenter)
+        self.activity_label.setWordWrap(True)
+        self.activity_label.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.activity_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.activity_label.setStyleSheet(
+            "QLabel{color:#7f8da0;font-size:9px;background:transparent;}"
+        )
+
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.setInterval(210)
+        self._click_timer.timeout.connect(self.listen)
+
         screen = QApplication.primaryScreen()
         if screen:
             area = screen.availableGeometry()
             self.move(
                 area.left() + (area.width() - self.width()) // 2,
-                area.top() + 16,
+                area.top() + 10,
             )
 
         self.timer = QTimer(self)
@@ -327,6 +357,19 @@ class GenesisOrb(QWidget):
         self.interrupt_timer = QTimer(self)
         self.interrupt_timer.timeout.connect(self.poll_interrupt)
         self.interrupt_timer.start(35)
+
+    def set_display(self, text: str) -> None:
+        self.caption.setText(text.strip())
+        self.caption.adjustSize()
+        # Keep the response area tied to the orb instead of spawning a chat window.
+        self.caption.setGeometry(24, 139, 332, 45)
+
+    def set_activity(self, text: str) -> None:
+        self.activity_label.setText(text.strip())
+        self.activity_label.adjustSize()
+        self.activity_label.setGeometry(34, 186, 312, 28)
+        if self.popup is not None and self.popup.isVisible():
+            self.popup.set_activity(text)
 
     def animate(self) -> None:
         self.phase += 0.045
@@ -366,22 +409,62 @@ class GenesisOrb(QWidget):
         self.popup.set_activity(self.boot_status)
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.LeftButton:
-            self.listen()
-        elif event.button() == Qt.RightButton:
+        if event.button() == Qt.RightButton:
             self.show_popup()
+            return
+
+        if event.button() == Qt.LeftButton:
+            self._click_timer.stop()
+            self._last_mouse_pos = event.globalPosition().toPoint()
+            self._drag_offset = self._last_mouse_pos - self.frameGeometry().topLeft()
+            self._dragging = False
+
+    def mouseMoveEvent(self, event) -> None:
+        if not (event.buttons() & Qt.LeftButton):
+            return
+
+        current = event.globalPosition().toPoint()
+        delta = current - self._last_mouse_pos
+        if not self._dragging and (abs(delta.x()) > 3 or abs(delta.y()) > 3):
+            self._dragging = True
+            if self.popup is not None:
+                self.popup.hide()
+
+        if not self._dragging:
+            return
+
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+
+        area = screen.availableGeometry()
+        desired_x = current.x() - self._drag_offset.x()
+        desired_y = current.y() - self._drag_offset.y()
+        desired_x = max(area.left(), min(desired_x, area.right() - self.width() + 1))
+        desired_y = max(area.top(), min(desired_y, area.bottom() - self.height() + 1))
+        self.move(desired_x, desired_y)
+        self._last_mouse_pos = current
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() != Qt.LeftButton:
+            return
+        if not self._dragging:
+            self._click_timer.start()
+        self._dragging = False
 
     def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() != Qt.LeftButton:
+            return
+        self._click_timer.stop()
         from .genesis import open_memory_galaxy
         self.galaxy = open_memory_galaxy()
 
     def listen(self) -> None:
         if self.reply and self.reply.isRunning():
             return
-        self.show_popup()
         self.set_state("listening")
-        self.popup.text.setText("Listening…")
-        self.popup.set_activity("Microphone active. Waiting for speech.")
+        self.set_display("Listening…")
+        self.set_activity("Microphone active • speak naturally")
         self.stop_voice()
         self.voice = VoiceWorker(self)
         self.voice.heard.connect(self.submit)
@@ -396,19 +479,24 @@ class GenesisOrb(QWidget):
         _ULTRON_BUSY.set()
         mark_activity()
         self.stop_voice()
-        self.show_popup()
+        if self.popup is not None:
+            self.popup.hide()
+
         self.set_state("thinking")
         self._active_prompt = prompt
         self._response_text = ""
+        self._generation_finished = False
+        self._speech_finished = False
+
         route = route_prompt(prompt)
         try:
             actual_model = resident_model_for(route.model)
         except Exception:
             actual_model = route.model
-        self.popup.text.setText(f"Founder: {prompt}\n\nULTRON:")
-        self.popup.set_activity(
-            f"Route: {route.agent.upper()}  •  Model: {actual_model}\n"
-            "Stage: generating reply + preparing speech…"
+
+        self.set_display("Thinking…")
+        self.set_activity(
+            f"Route: {route.agent.upper()} • {actual_model}"
         )
 
         if self.reply and self.reply.isRunning():
@@ -423,13 +511,11 @@ class GenesisOrb(QWidget):
         self.reply.chunk.connect(self.reply_chunk)
         self.reply.ready.connect(self.reply_ready)
         self.reply.failed.connect(self.reply_error)
-
         self.reply.start()
 
-
     def reply_chunk(self, token: str) -> None:
-        if not self.popup:
-            return
+        self._response_text += token
+        self.set_display(self._response_text)
 
         if self.speech is None or not self.speech.isRunning():
             self.speech = SpeechWorker(self)
@@ -437,16 +523,11 @@ class GenesisOrb(QWidget):
             self.speech.finished.connect(self.speech_finished)
             self.speech.start()
 
-        self._response_text += token
-        self.popup.text.setText(
-            f"Founder: {self._active_prompt}\n\nULTRON:\n{self._response_text}"
-        )
         if self.speech and self.speech.isRunning():
             self.speech.feed(token)
-        self.popup.set_activity(
-            "Stage: generating + speaking when sentences are ready…"
-        )
-        self.popup.adjustSize()
+
+        self.set_activity("Generating • speech starts sentence-by-sentence")
+        self.update()
 
     def reply_ready(self, text: str) -> None:
         self._generation_finished = True
@@ -454,13 +535,14 @@ class GenesisOrb(QWidget):
             self.speech.finish_input()
         elif text.strip():
             self._start_emergency_speech(text)
+        else:
+            self._speech_finished = True
+            _ULTRON_BUSY.clear()
+            self.set_state("idle")
 
     def speech_started(self) -> None:
         self.set_state("speaking")
-        if self.popup:
-            self.popup.set_activity(
-                "Stage: speaking while the AI is still generating…"
-            )
+        self.set_activity("Speaking • Ctrl+Y interrupts")
 
     def _start_emergency_speech(self, text: str) -> None:
         self._speech_finished = False
@@ -477,19 +559,17 @@ class GenesisOrb(QWidget):
         mark_activity()
         self.speech = None
         self.set_state("idle")
-        if self.popup:
-            self.popup.set_activity(
-                "Stage: response fully spoken. Listening for your next command…"
-            )
+        self.set_activity("Ready • say something or drag the orb")
         self._maybe_listen()
 
     def _maybe_listen(self) -> None:
         if self._generation_finished and self._speech_finished:
-            QTimer.singleShot(350, self.listen)
+            QTimer.singleShot(700, self.listen)
 
     def interrupt(self) -> None:
         _ULTRON_BUSY.clear()
         mark_activity()
+        self._click_timer.stop()
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
@@ -502,9 +582,8 @@ class GenesisOrb(QWidget):
         self._generation_finished = False
         self._speech_finished = False
         self.set_state("idle")
-        self.show_popup()
-        self.popup.text.setText("Interrupted. Standing by.")
-        self.popup.set_activity("Stage: interrupted by Founder.")
+        self.set_display("Interrupted.")
+        self.set_activity("Ready • Ctrl+Y interrupted the current task")
 
     def stop_voice(self) -> None:
         if self.voice and self.voice.isRunning():
@@ -514,9 +593,8 @@ class GenesisOrb(QWidget):
 
     def voice_error(self, message: str) -> None:
         self.set_state("error")
-        self.show_popup()
-        self.popup.text.setText("Microphone error:\n" + message)
-        self.popup.set_activity("Stage: microphone error.")
+        self.set_display("Microphone error")
+        self.set_activity(message)
 
     def reply_error(self, message: str) -> None:
         _ULTRON_BUSY.clear()
@@ -528,20 +606,18 @@ class GenesisOrb(QWidget):
             self.speech.wait(250)
             self.speech = None
         self.set_state("error")
-        self.show_popup()
-        self.popup.text.setText("Brain error:\n" + message)
-        self.popup.set_activity("Stage: model error. Ready to retry.")
+        self.set_display("Brain error")
+        self.set_activity(message)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        center = self.rect().center()
+        center = QPoint(self.width() // 2, 70)
         color = self.COLORS[self.state]
 
         pulse = math.sin(self.phase) * 3.0
         ring = 42 + pulse
 
-        # Layered ambient glow.
         for radius, alpha in (
             (61 + pulse, 8),
             (55 + pulse, 12),
@@ -549,12 +625,11 @@ class GenesisOrb(QWidget):
         ):
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(color.red(), color.green(), color.blue(), alpha))
-            painter.drawEllipse(center, radius, radius)
+            painter.drawEllipse(center, int(radius), int(radius))
 
-        # Rotating ring.
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 90), 1.4))
-        painter.drawEllipse(center, ring, ring)
+        painter.drawEllipse(center, int(ring), int(ring))
 
         painter.setPen(QPen(color, 2.2))
         painter.drawArc(
@@ -563,7 +638,6 @@ class GenesisOrb(QWidget):
             82 * 16,
         )
 
-        # Six orbiting particles.
         painter.setPen(Qt.NoPen)
         for index in range(6):
             angle = self.phase * (1.0 + index * 0.05) + index * math.tau / 6
@@ -574,7 +648,6 @@ class GenesisOrb(QWidget):
             painter.setBrush(QColor(color.red(), color.green(), color.blue(), 210))
             painter.drawEllipse(QPoint(int(px), int(py)), int(size), int(size))
 
-        # Core.
         gradient = QRadialGradient(center, 31)
         gradient.setColorAt(0.0, QColor(255, 255, 255, 240))
         gradient.setColorAt(0.2, color.lighter(145))
@@ -588,12 +661,13 @@ class GenesisOrb(QWidget):
         painter.setPen(QColor(190, 200, 214, 180))
         painter.setFont(QFont("Segoe UI", 7, QFont.DemiBold))
         painter.drawText(
-            QRectF(0, 119, self.width(), 14),
+            QRectF(0, 110, self.width(), 16),
             Qt.AlignCenter,
             self.state.upper(),
         )
 
     def closeEvent(self, event) -> None:
+        self._click_timer.stop()
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
