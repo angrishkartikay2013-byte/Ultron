@@ -100,6 +100,6 @@ def route_prompt(prompt: str) -> Route:
     # Tiny reflex model handles very short conversational turns.
     # The 1.5B fast brain handles normal conversation that needs more nuance.
     if length <= 40:
-        return Route("conversation_reflex", AGENT_MODEL, 64, 512, 1)
+        return Route("conversation_reflex", AGENT_MODEL, 32, 256, 0)
 
     return Route("conversation_fast", FAST_MODEL, 96, 768, 2)
