@@ -68,11 +68,22 @@ def main() -> None:
     env = os.environ.copy()
     env["OLLAMA_MODELS"] = str(MODEL_DIR)
 
-    subprocess.run([str(OLLAMA), "pull", MICRO_MODEL], env=env, check=True)
-    subprocess.run([str(OLLAMA), "pull", MODEL], env=env, check=True)
-    subprocess.run([str(OLLAMA), "pull", VISION_MODEL], env=env, check=True)
+    tags = requests.get(f"{BASE_URL}/api/tags", timeout=4)
+    tags.raise_for_status()
+    installed = {
+        item.get("name", "")
+        for item in tags.json().get("models", [])
+        if item.get("name")
+    }
 
-    print(f"\n{MODEL} and {VISION_MODEL} are ready.")
+    for model in (MICRO_MODEL, MODEL, VISION_MODEL):
+        if model in installed:
+            print(f"{model} already installed.")
+            continue
+        print(f"Pulling {model}…")
+        subprocess.run([str(OLLAMA), "pull", model], env=env, check=True)
+
+    print("\nRequired ULTRON models are ready.")
     print(f"Stored under: {MODEL_DIR}")
     print("Existing 1.5B / 3B / 8B models are left untouched.")
 
