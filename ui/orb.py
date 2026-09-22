@@ -4,6 +4,7 @@ import ctypes
 import math
 import queue
 import threading
+import time
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QRectF, Qt, QThread, QTimer, Signal
@@ -26,6 +27,26 @@ from brain.router import AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION
 
 VK_Y = 0x59
 VK_CONTROL = 0x11
+
+_BACKGROUND_IDLE_SECONDS = 15.0
+_ACTIVITY_LOCK = threading.Lock()
+_LAST_ACTIVITY = time.monotonic()
+_ULTRON_BUSY = threading.Event()
+
+
+def mark_activity() -> None:
+    global _LAST_ACTIVITY
+    with _ACTIVITY_LOCK:
+        _LAST_ACTIVITY = time.monotonic()
+
+
+def background_idle() -> bool:
+    if _ULTRON_BUSY.is_set():
+        return False
+    with _ACTIVITY_LOCK:
+        return time.monotonic() - _LAST_ACTIVITY >= _BACKGROUND_IDLE_SECONDS
+
+
 
 
 def interrupt_pressed() -> bool:
@@ -53,16 +74,18 @@ class StartupWorker(QThread):
             self.failed.emit(f"Reflex startup failed: {exc}")
             return
 
-        # Phase 2: keep working after the orb is already visible.
+        # Keep only the small speed pair warm in the background.
+        # Large brains load on demand so they cannot evict the reflex/fast
+        # pair or compete with a live response for CPU/RAM.
         background_tasks = [
             ("voice engine", self._warm_voice),
             ("fast brain", lambda: warm_model(FAST_MODEL)),
-            ("reasoning brain", lambda: warm_model(MID_MODEL)),
-            ("visual cortex", lambda: warm_model(VISION_MODEL)),
-            ("builder brain", lambda: warm_model(HEAVY_MODEL)),
         ]
 
         for label, task in background_tasks:
+            while not background_idle():
+                time.sleep(0.5)
+
             try:
                 self.status.emit(f"Background: loading {label}…")
                 loaded = task()
@@ -71,10 +94,9 @@ class StartupWorker(QThread):
                 else:
                     self.status.emit(f"Background: {label} online")
             except Exception as exc:
-                # One unavailable brain must never prevent the smaller brains
-                # and the orb from staying usable.
                 self.status.emit(f"Background: {label} skipped • {exc}")
 
+        self.status.emit("Background: large brains remain on-demand for speed.")
         self.finished_background.emit()
 
     @staticmethod
@@ -371,6 +393,8 @@ class GenesisOrb(QWidget):
         if not prompt:
             return
 
+        _ULTRON_BUSY.set()
+        mark_activity()
         self.stop_voice()
         self.show_popup()
         self.set_state("thinking")
@@ -444,6 +468,8 @@ class GenesisOrb(QWidget):
 
     def speech_finished(self) -> None:
         self._speech_finished = True
+        _ULTRON_BUSY.clear()
+        mark_activity()
         self.speech = None
         self.set_state("idle")
         if self.popup:
@@ -457,6 +483,8 @@ class GenesisOrb(QWidget):
             QTimer.singleShot(350, self.listen)
 
     def interrupt(self) -> None:
+        _ULTRON_BUSY.clear()
+        mark_activity()
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
@@ -486,6 +514,8 @@ class GenesisOrb(QWidget):
         self.popup.set_activity("Stage: microphone error.")
 
     def reply_error(self, message: str) -> None:
+        _ULTRON_BUSY.clear()
+        mark_activity()
         self._generation_finished = True
         self._speech_finished = True
         if self.speech and self.speech.isRunning():
