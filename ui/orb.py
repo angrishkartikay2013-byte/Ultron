@@ -81,8 +81,8 @@ class StartupWorker(QThread):
 
         # Richer brains and voice warm only after the orb is already usable.
         background_tasks = [
-            ("reflex brain", lambda: warm_model(AGENT_MODEL)),
             ("fast brain", lambda: warm_model(FAST_MODEL)),
+            ("reasoning brain", lambda: warm_model(MID_MODEL)),
             ("voice engine", self._warm_voice),
         ]
 
@@ -109,12 +109,13 @@ class StartupWorker(QThread):
     @staticmethod
     def _warm_voice() -> str:
         from voice import load_voice_models
-        whisper_name, piper_name = load_voice_models()
-        return f"{whisper_name} + {piper_name}"
+        stt_name = load_voice_models()
+        return stt_name
 
 
 class VoiceWorker(QThread):
     heard = Signal(str)
+    partial = Signal(str)
     failed = Signal(str)
 
     def __init__(self, parent: QWidget) -> None:
@@ -128,7 +129,10 @@ class VoiceWorker(QThread):
         try:
             info("Voice worker started listening")
             from voice import listen_once
-            text = listen_once(stop_event=self.stop_event)
+            text = listen_once(
+                stop_event=self.stop_event,
+                partial_callback=self.partial.emit,
+            )
             info(f"Voice worker heard: {text!r}")
             if text and not self.stop_event.is_set():
                 self.heard.emit(text)
@@ -481,9 +485,17 @@ class GenesisOrb(QWidget):
         self.set_activity("Microphone active • speak naturally")
         self.voice = VoiceWorker(self)
         self.voice.heard.connect(self.submit)
+        self.voice.partial.connect(self.voice_partial)
         self.voice.failed.connect(self.voice_error)
         self.voice.finished.connect(self.voice_finished)
         self.voice.start()
+
+    def voice_partial(self, text: str) -> None:
+        if not text.strip() or _ULTRON_BUSY.is_set():
+            return
+        self.set_display(f"Hearing: {text}")
+        self.set_activity("Live transcription • waiting for you to finish speaking")
+        self.update()
 
     def voice_finished(self) -> None:
         # An empty/no-speech capture should retry instead of leaving the orb
