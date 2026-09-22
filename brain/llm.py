@@ -137,6 +137,10 @@ def choose_ready_model(preferred: str) -> str:
 
     raise RuntimeError("No resident language model is available yet.")
 
+def resident_model_for(preferred: str) -> str:
+    return choose_ready_model(preferred)
+
+
 def choose_model(preferred: str) -> str:
     models = installed_models()
 
