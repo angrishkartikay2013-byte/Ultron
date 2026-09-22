@@ -64,25 +64,20 @@ class StartupWorker(QThread):
     finished_background = Signal()
 
     def run(self) -> None:
-        # Phase 1: make the smallest useful brain live as fast as possible.
+        # Only the tiny micro-brain blocks the orb from appearing.
         try:
             self.status.emit("Starting micro-brain…")
             micro = warm_model(MICRO_MODEL)
             self.status.emit(f"Micro online • {micro}")
-
-            self.status.emit("Starting reflex brain…")
-            reflex = warm_model(AGENT_MODEL)
-            self.status.emit(f"Reflex online • {reflex}")
             mark_activity()
             self.ready.emit()
         except Exception as exc:
-            self.failed.emit(f"Reflex startup failed: {exc}")
+            self.failed.emit(f"Micro startup failed: {exc}")
             return
 
-        # Keep only the small speed pair warm in the background.
-        # Large brains load on demand so they cannot evict the reflex/fast
-        # pair or compete with a live response for CPU/RAM.
+        # Richer brains and voice warm only after the orb is already usable.
         background_tasks = [
+            ("reflex brain", lambda: warm_model(AGENT_MODEL)),
             ("fast brain", lambda: warm_model(FAST_MODEL)),
             ("voice engine", self._warm_voice),
         ]
@@ -101,7 +96,7 @@ class StartupWorker(QThread):
             except Exception as exc:
                 self.status.emit(f"Background: {label} skipped • {exc}")
 
-        self.status.emit("Background: large brains remain on-demand for speed.")
+        self.status.emit("Background: larger brains remain on-demand.")
         self.finished_background.emit()
 
     @staticmethod
