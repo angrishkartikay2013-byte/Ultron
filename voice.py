@@ -34,7 +34,7 @@ if not PIPER_MODEL.exists():
         f"Piper voice not found at {PIPER_MODEL}. Run: uv run scripts/setup_piper_voice.py"
     )
 
-MOONSHINE_MODEL_ARCH = ModelArch.SMALL_STREAMING
+MOONSHINE_MODEL_ARCH = ModelArch.MEDIUM_STREAMING
 
 speech_model: PiperVoice | None = None
 moonshine_mic: MicTranscriber | None = None
@@ -125,7 +125,7 @@ def load_voice_models(device: int | None = None) -> str:
             .language("en")
             .model_arch(MOONSHINE_MODEL_ARCH)
             .device(selected_device)
-            .update_interval(0.25)
+            .update_interval(0.18)
         )
         moonshine_mic.load()
         moonshine_device = selected_device
@@ -143,9 +143,16 @@ class _LineListener(TranscriptEventListener):
         self,
         result_event: threading.Event,
         result_box: dict[str, str],
+        partial_callback=None,
     ) -> None:
         self.result_event = result_event
         self.result_box = result_box
+        self.partial_callback = partial_callback
+
+    def on_line_text_changed(self, event) -> None:
+        text = re.sub(r"\s+", " ", (event.line.text or "")).strip()
+        if text and self.partial_callback is not None:
+            self.partial_callback(text)
 
     def on_line_completed(self, event) -> None:
         text = re.sub(r"\s+", " ", (event.line.text or "")).strip()
@@ -164,6 +171,7 @@ class _LineListener(TranscriptEventListener):
 def listen_once(
     device: int | None = None,
     stop_event: threading.Event | None = None,
+    partial_callback=None,
 ) -> str:
     selected = get_saved_device() if device is None else device
     if selected is None:
@@ -174,7 +182,7 @@ def listen_once(
 
     result_event = threading.Event()
     result_box: dict[str, str] = {"text": ""}
-    listener = _LineListener(result_event, result_box)
+    listener = _LineListener(result_event, result_box, partial_callback)
 
     moonshine_mic.remove_all_listeners()
     moonshine_mic.add_listener(listener)
