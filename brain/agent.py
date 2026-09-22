@@ -113,7 +113,7 @@ def _operator_schema() -> dict[str, Any]:
         variants.append({
             "type": "object",
             "properties": {
-                "tool": {"const": name},
+                "tool": {"type": "string", "enum": [name]},
                 "arguments": _tool_argument_schema(spec),
             },
             "required": ["tool", "arguments"],
