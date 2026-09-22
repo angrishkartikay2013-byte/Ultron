@@ -84,20 +84,32 @@ def _model_context(turns: int) -> list[dict[str, str]]:
 def _run_router(
     prompt: str,
     model: str,
-    max_output_tokens: int = 64,
+    max_output_tokens: int = 96,
 ) -> tuple[dict[str, Any], str]:
     context = _model_context(1) + [{"role": "user", "content": prompt}]
 
     def call_router(selected_model: str) -> dict[str, Any]:
-        routed = chat(
-            context,
-            system_extra=_OPERATOR_PROMPT + prompt_catalog(),
-            model=selected_model,
-            max_output_tokens=max_output_tokens,
-            num_ctx=640,
-            response_format=_OPERATOR_SCHEMA,
-        )
-        data = _extract_json(routed)
+        try:
+            routed = chat(
+                context,
+                system_extra=_OPERATOR_PROMPT + prompt_catalog(),
+                model=selected_model,
+                max_output_tokens=max_output_tokens,
+                num_ctx=768,
+                response_format=_OPERATOR_SCHEMA,
+            )
+            info(
+                f"Operator raw output: model={selected_model} "
+                f"{routed[:500]!r}"
+            )
+            data = _extract_json(routed)
+        except Exception as exc:
+            info(
+                f"Operator attempt failed: model={selected_model} "
+                f"error={exc}"
+            )
+            raise
+
         info(
             f"Operator JSON: model={selected_model} "
             f"mode={data.get('mode')!r} "
@@ -105,7 +117,17 @@ def _run_router(
         )
         return data
 
-    data = call_router(model)
+    try:
+        data = call_router(model)
+    except Exception:
+        data = None
+
+    if data is None:
+        # Retry with a stronger resident language model; no command mapping.
+        info("Operator retry: switching to the fast resident brain.")
+        data = call_router(FAST_MODEL)
+        model = FAST_MODEL
+
     mode = data.get("mode")
     mission = data.get("mission")
     response = data.get("response")
@@ -115,8 +137,6 @@ def _run_router(
         or not isinstance(mission, list)
         or not isinstance(response, str)
     ):
-        # The tiny operator is fast, but structured planning gets one stronger
-        # retry when its output is incomplete. No hard-coded command mapping.
         info("Operator JSON incomplete; retrying with the fast resident brain.")
         data = call_router(FAST_MODEL)
         model = FAST_MODEL
