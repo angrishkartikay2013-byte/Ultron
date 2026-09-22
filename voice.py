@@ -1,26 +1,33 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import re
+import tempfile
 import threading
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
+MOONSHINE_DATA_DIR = ROOT / "voice_models" / "moonshine_voice"
+MOONSHINE_TEMP_DIR = ROOT / "tmp" / "moonshine"
+PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
+DEVICE_FILE = ROOT / "memory" / "audio_device.json"
+
+# Keep Moonshine downloads and temporary files on E:, not the Windows
+# user temp directory. This is important on machines with a small C: drive.
+MOONSHINE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+MOONSHINE_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["MOONSHINE_VOICE_CACHE"] = str(MOONSHINE_DATA_DIR)
+os.environ["TEMP"] = str(MOONSHINE_TEMP_DIR)
+os.environ["TMP"] = str(MOONSHINE_TEMP_DIR)
+tempfile.tempdir = str(MOONSHINE_TEMP_DIR)
+
 import sounddevice as sd
-from moonshine_voice import (
-    MicTranscriber,
-    ModelArch,
-    TranscriptEventListener,
-    get_model_for_language,
-)
+from moonshine_voice import MicTranscriber, ModelArch, TranscriptEventListener
 from piper import PiperVoice
 
 from debug import info, exception
-
-ROOT = Path(__file__).resolve().parent
-MOONSHINE_DATA_DIR = ROOT / "voice_models" / "moonshine_voice"
-PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
-DEVICE_FILE = ROOT / "memory" / "audio_device.json"
 
 if not PIPER_MODEL.exists():
     raise FileNotFoundError(
@@ -30,8 +37,6 @@ if not PIPER_MODEL.exists():
 MOONSHINE_MODEL_ARCH = ModelArch.SMALL_STREAMING
 
 speech_model: PiperVoice | None = None
-moonshine_model_path: Path | None = None
-moonshine_model_arch: ModelArch | None = None
 moonshine_mic: MicTranscriber | None = None
 moonshine_device: int | None = None
 _speech_lock = threading.Lock()
@@ -83,10 +88,17 @@ def choose_microphone() -> int:
             return selected
 
 
-def load_voice_models(device: int | None = None) -> tuple[str, str]:
-    """Load Moonshine and Piper exactly once, on demand."""
+def _load_piper() -> PiperVoice:
     global speech_model
-    global moonshine_model_path, moonshine_model_arch, moonshine_mic, moonshine_device
+    if speech_model is None:
+        info(f"Loading Piper voice {PIPER_MODEL.name!r}")
+        speech_model = PiperVoice.load(str(PIPER_MODEL))
+    return speech_model
+
+
+def load_voice_models(device: int | None = None) -> str:
+    """Load Moonshine STT exactly once, on demand."""
+    global moonshine_mic, moonshine_device
 
     selected_device = get_saved_device() if device is None else device
     if selected_device is None:
@@ -107,11 +119,6 @@ def load_voice_models(device: int | None = None) -> tuple[str, str]:
             "Loading Moonshine Voice small-streaming model "
             f"for microphone device {selected_device}"
         )
-        moonshine_model_path, moonshine_model_arch = get_model_for_language(
-            "en",
-            wanted_model_arch=MOONSHINE_MODEL_ARCH,
-            cache_root=MOONSHINE_DATA_DIR,
-        )
 
         moonshine_mic = (
             MicTranscriber()
@@ -123,16 +130,12 @@ def load_voice_models(device: int | None = None) -> tuple[str, str]:
         moonshine_mic.load()
         moonshine_device = selected_device
 
-    if speech_model is None:
-        info(f"Loading Piper voice {PIPER_MODEL.name!r}")
-        speech_model = PiperVoice.load(str(PIPER_MODEL))
-
     info(
-        "Voice models ready: "
-        "STT=Moonshine small-streaming, "
-        f"device={moonshine_device}, Piper={PIPER_MODEL.name}"
+        "Voice STT ready: "
+        f"Moonshine small-streaming, device={moonshine_device}, "
+        f"cache={MOONSHINE_DATA_DIR}"
     )
-    return "moonshine-small-streaming", PIPER_MODEL.name
+    return "moonshine-small-streaming"
 
 
 class _LineListener(TranscriptEventListener):
@@ -186,8 +189,6 @@ def listen_once(
                 moonshine_mic.stop()
                 return ""
 
-        # Give the recognizer a tiny amount of time to settle the final event
-        # before the audio device is handed back to the rest of ULTRON.
         result_event.wait(0.05)
         moonshine_mic.stop()
 
@@ -225,13 +226,11 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
     if not chunks:
         return
 
-    if speech_model is None:
-        load_voice_models()
-
+    piper = _load_piper()
     info(f"TTS starting: {text[:160]!r}")
     with _speech_lock:
         stream = sd.RawOutputStream(
-            samplerate=speech_model.config.sample_rate,
+            samplerate=piper.config.sample_rate,
             channels=1,
             dtype="int16",
             latency="low",
@@ -241,7 +240,7 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
             for chunk_text in chunks:
                 if stop_event and stop_event.is_set():
                     break
-                for audio in speech_model.synthesize(chunk_text):
+                for audio in piper.synthesize(chunk_text):
                     if stop_event and stop_event.is_set():
                         break
                     stream.write(audio.audio_int16_bytes)
@@ -260,9 +259,7 @@ def speak_streaming(
 ) -> None:
     """Speak complete sentences as they arrive from the streaming LLM."""
     buffer = ""
-
-    if speech_model is None:
-        load_voice_models()
+    piper = _load_piper()
 
     def emit_sentence(sentence: str) -> None:
         clean = sentence.strip()
@@ -270,14 +267,14 @@ def speak_streaming(
             return
         if started_callback is not None:
             started_callback()
-        for audio in speech_model.synthesize(clean):
+        for audio in piper.synthesize(clean):
             if stop_event.is_set():
                 return
             stream.write(audio.audio_int16_bytes)
 
     with _speech_lock:
         stream = sd.RawOutputStream(
-            samplerate=speech_model.config.sample_rate,
+            samplerate=piper.config.sample_rate,
             channels=1,
             dtype="int16",
             latency="low",
@@ -304,7 +301,7 @@ def speak_streaming(
                         break
 
             if not stop_event.is_set():
-                tail_samples = max(1, int(speech_model.config.sample_rate * 0.12))
+                tail_samples = max(1, int(piper.config.sample_rate * 0.12))
                 stream.write(b"\x00\x00" * tail_samples)
         finally:
             stream.stop()
