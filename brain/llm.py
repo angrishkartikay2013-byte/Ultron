@@ -111,14 +111,14 @@ def resident_models(refresh: bool = False) -> set[str]:
 
 
 def choose_ready_model(preferred: str) -> str:
-    """Choose the best model that is already resident; never trigger a load."""
+    """Choose only a resident model; never cause a cold model load."""
     loaded = resident_models(refresh=True)
 
     priorities = {
         HEAVY_MODEL: (HEAVY_MODEL, MID_MODEL, FAST_MODEL, AGENT_MODEL),
         MID_MODEL: (MID_MODEL, FAST_MODEL, AGENT_MODEL),
         FAST_MODEL: (FAST_MODEL, AGENT_MODEL),
-        AGENT_MODEL: (AGENT_MODEL,),
+        AGENT_MODEL: (AGENT_MODEL, FAST_MODEL),
         VISION_MODEL: (VISION_MODEL,),
     }
 
@@ -126,10 +126,11 @@ def choose_ready_model(preferred: str) -> str:
         if candidate in loaded:
             return candidate
 
-    # The reflex brain should be the first warm brain. If even that is not
-    # resident yet, let the normal selection logic choose an installed fallback.
-    return AGENT_MODEL if AGENT_MODEL in loaded else choose_model(preferred)
+    for candidate in (AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL):
+        if candidate in loaded:
+            return candidate
 
+    raise RuntimeError("No resident language model is available yet.")
 
 def choose_model(preferred: str) -> str:
     models = installed_models()
