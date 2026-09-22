@@ -266,6 +266,7 @@ def vision_chat(
     image_bytes: bytes,
     timeout: int = 90,
     max_output_tokens: int = 128,
+    response_format: str | None = None,
 ) -> str:
     selected_model = choose_model(VISION_MODEL) if VISION_MODEL in installed_models() else VISION_MODEL
     if selected_model not in installed_models():
@@ -291,21 +292,23 @@ def vision_chat(
         },
     ]
 
-    response = _SESSION.post(
-        URL,
-        json={
-            "model": selected_model,
-            "messages": messages,
-            "stream": False,
-            "think": False,
-            "keep_alive": "5m",
-            "options": _payload_options(
+    payload = {
+        "model": selected_model,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "keep_alive": "5m",
+        "options": _payload_options(
                 selected_model,
                 *_effective_limits(selected_model, max_output_tokens, 768),
             ),
         },
         timeout=timeout,
     )
+    if response_format:
+        payload["format"] = response_format
+
+    response = _SESSION.post(URL, json=payload, timeout=timeout)
     response.raise_for_status()
 
     content = response.json().get("message", {}).get("content")
@@ -321,6 +324,7 @@ def chat(
     model: str | None = None,
     max_output_tokens: int = 72,
     num_ctx: int = 768,
+    response_format: str | None = None,
 ) -> str:
     selected_model = choose_ready_model(model or FAST_MODEL)
     effective_output, effective_ctx = _effective_limits(
@@ -334,22 +338,22 @@ def chat(
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
 
-    response = _SESSION.post(
-        URL,
-        json={
-            "model": selected_model,
-            "messages": _messages(history, system),
-            "stream": False,
-            "think": False,
-            "keep_alive": _keep_alive(selected_model),
-            "options": _payload_options(
-                selected_model,
-                effective_output,
-                effective_ctx,
-            ),
-        },
-        timeout=timeout,
-    )
+    payload = {
+        "model": selected_model,
+        "messages": _messages(history, system),
+        "stream": False,
+        "think": False,
+        "keep_alive": _keep_alive(selected_model),
+        "options": _payload_options(
+            selected_model,
+            effective_output,
+            effective_ctx,
+        ),
+    }
+    if response_format:
+        payload["format"] = response_format
+
+    response = _SESSION.post(URL, json=payload, timeout=timeout)
     response.raise_for_status()
 
     content = response.json().get("message", {}).get("content")
