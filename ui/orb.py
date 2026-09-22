@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from brain.agent import stream_prompt
 from brain.llm import resident_model_for, warm_model
 from brain.router import MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION_MODEL, route_prompt
-from debug import info, exception, log_path
+from debug import info, error, exception, log_path
 
 
 VK_Y = 0x59
@@ -166,7 +166,7 @@ class ReplyWorker(QThread):
 
 class SpeechWorker(QThread):
     started_speaking = Signal()
-    finished = Signal()
+    done = Signal()
 
     def __init__(self, text: str, parent: QWidget) -> None:
         super().__init__(parent)
@@ -183,7 +183,7 @@ class SpeechWorker(QThread):
                 self.started_speaking.emit()
                 speak(self.text, stop_event=self.stop_event)
         finally:
-            self.finished.emit()
+            self.done.emit()
 
 
 
@@ -348,6 +348,10 @@ class GenesisOrb(QWidget):
         self._click_timer.setInterval(210)
         self._click_timer.timeout.connect(self.listen)
 
+        self._listen_again_timer = QTimer(self)
+        self._listen_again_timer.setSingleShot(True)
+        self._listen_again_timer.timeout.connect(self.listen)
+
         screen = QApplication.primaryScreen()
         if screen:
             area = screen.availableGeometry()
@@ -468,14 +472,33 @@ class GenesisOrb(QWidget):
     def listen(self) -> None:
         if self.reply and self.reply.isRunning():
             return
+        if self.voice and self.voice.isRunning():
+            return
+
+        self._listen_again_timer.stop()
         self.set_state("listening")
         self.set_display("Listening…")
         self.set_activity("Microphone active • speak naturally")
-        self.stop_voice()
         self.voice = VoiceWorker(self)
         self.voice.heard.connect(self.submit)
         self.voice.failed.connect(self.voice_error)
+        self.voice.finished.connect(self.voice_finished)
         self.voice.start()
+
+    def voice_finished(self) -> None:
+        # An empty/no-speech capture should retry instead of leaving the orb
+        # listening visually while the worker has already exited.
+        if self.voice and not self.voice.isRunning():
+            self.voice = None
+        if (
+            self.state == "listening"
+            and not self._ULTRON_busy_for_voice()
+            and not (self.reply and self.reply.isRunning())
+        ):
+            self._listen_again_timer.start(350)
+
+    def _ULTRON_busy_for_voice(self) -> bool:
+        return _ULTRON_BUSY.is_set()
 
     def submit(self, prompt: str) -> None:
         prompt = prompt.strip()
@@ -561,7 +584,7 @@ class GenesisOrb(QWidget):
 
         self.speech = SpeechWorker(text, self)
         self.speech.started_speaking.connect(self.speech_started)
-        self.speech.finished.connect(self.speech_finished)
+        self.speech.done.connect(self.speech_finished)
         self.speech.start()
 
 
@@ -584,13 +607,14 @@ class GenesisOrb(QWidget):
 
     def _maybe_listen(self) -> None:
         if self._generation_finished and self._speech_finished:
-            QTimer.singleShot(1500, self.listen)
+            self._listen_again_timer.start(1500)
 
     def interrupt(self) -> None:
         info("Founder interrupted ULTRON")
         _ULTRON_BUSY.clear()
         mark_activity()
         self._click_timer.stop()
+        self._listen_again_timer.stop()
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
@@ -613,7 +637,7 @@ class GenesisOrb(QWidget):
         self.voice = None
 
     def voice_error(self, message: str) -> None:
-        exception(f"Microphone/voice error surfaced: {message}")
+        error(f"Microphone/voice error surfaced: {message}")
         self.set_state("error")
         self.set_display("Voice error")
         self.set_activity(
@@ -621,7 +645,7 @@ class GenesisOrb(QWidget):
         )
 
     def reply_error(self, message: str) -> None:
-        exception(f"Brain error surfaced: {message}")
+        error(f"Brain error surfaced: {message}")
         _ULTRON_BUSY.clear()
         mark_activity()
         self._generation_finished = True
@@ -695,6 +719,7 @@ class GenesisOrb(QWidget):
 
     def closeEvent(self, event) -> None:
         self._click_timer.stop()
+        self._listen_again_timer.stop()
         self.stop_voice()
         if self.speech and self.speech.isRunning():
             self.speech.stop()
