@@ -1,156 +1,48 @@
 from __future__ import annotations
 
 import json
-import os
 import queue
 import re
 import threading
-import time
-import urllib.request
-import wave
-from collections import deque
 from pathlib import Path
 
-import numpy as np
-import onnxruntime as ort
 import sounddevice as sd
-from faster_whisper import WhisperModel
+from moonshine_voice import (
+    MicTranscriber,
+    ModelArch,
+    TranscriptEventListener,
+    get_model_for_language,
+)
 from piper import PiperVoice
 
-from debug import info, warning, exception
+from debug import info, exception
 
 ROOT = Path(__file__).resolve().parent
-WHISPER_DATA_DIR = ROOT / "voice_models" / "faster_whisper"
-VAD_DATA_DIR = ROOT / "voice_models" / "silero_vad"
-VAD_MODEL_PATH = VAD_DATA_DIR / "silero_vad.onnx"
-VAD_MODEL_URL = (
-    "https://raw.githubusercontent.com/snakers4/silero-vad/master/"
-    "src/silero_vad/data/silero_vad.onnx"
-)
-WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "base.en")
-WHISPER_THREADS = max(2, min(4, os.cpu_count() or 4))
+MOONSHINE_DATA_DIR = ROOT / "voice_models" / "moonshine_voice"
 PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
 DEVICE_FILE = ROOT / "memory" / "audio_device.json"
-TEMP_DIR = ROOT / "memory" / "voice_temp"
 
 if not PIPER_MODEL.exists():
     raise FileNotFoundError(
         f"Piper voice not found at {PIPER_MODEL}. Run: uv run scripts/setup_piper_voice.py"
     )
 
-WHISPER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-VAD_DATA_DIR.mkdir(parents=True, exist_ok=True)
+MOONSHINE_MODEL_ARCH = ModelArch.SMALL_STREAMING
 
-stt_model: WhisperModel | None = None
-vad_model: "SileroOnnxVAD" | None = None
 speech_model: PiperVoice | None = None
-audio_queue: queue.Queue[np.ndarray] = queue.Queue()
+moonshine_model_path: Path | None = None
+moonshine_model_arch: ModelArch | None = None
+moonshine_mic: MicTranscriber | None = None
+moonshine_device: int | None = None
 _speech_lock = threading.Lock()
-
-
-class SileroOnnxVAD:
-    """Small streaming wrapper around the official Silero VAD ONNX model."""
-
-    def __init__(self, model_path: Path) -> None:
-        opts = ort.SessionOptions()
-        opts.inter_op_num_threads = 1
-        opts.intra_op_num_threads = 1
-        self.session = ort.InferenceSession(
-            str(model_path),
-            providers=["CPUExecutionProvider"],
-            sess_options=opts,
-        )
-        self.reset()
-
-    def reset(self) -> None:
-        self.state = np.zeros((2, 1, 128), dtype=np.float32)
-        self.context = np.zeros((1, 64), dtype=np.float32)
-        self.last_batch_size = 1
-
-    def probability(self, chunk: np.ndarray) -> float:
-        audio = np.asarray(chunk, dtype=np.float32)
-        if audio.shape[0] != 512:
-            raise ValueError(f"Silero VAD expects 512 samples, got {audio.shape[0]}")
-
-        x = audio.reshape(1, -1)
-        x = np.concatenate([self.context, x], axis=1)
-
-        outputs = self.session.run(
-            None,
-            {
-                "input": x,
-                "state": self.state,
-                "sr": np.array(16000, dtype=np.int64),
-            },
-        )
-        output, self.state = outputs
-        self.context = x[:, -64:]
-        return float(np.asarray(output).reshape(-1)[0])
-
-
-def _ensure_vad_model() -> None:
-    if VAD_MODEL_PATH.exists() and VAD_MODEL_PATH.stat().st_size > 100_000:
-        return
-
-    info("Silero VAD model not found; downloading official ONNX model.")
-    VAD_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = VAD_MODEL_PATH.with_suffix(".download")
-    try:
-        urllib.request.urlretrieve(VAD_MODEL_URL, tmp)
-        if tmp.stat().st_size < 100_000:
-            raise RuntimeError("Downloaded Silero VAD model looks incomplete.")
-        tmp.replace(VAD_MODEL_PATH)
-    finally:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-
-
-def load_voice_models() -> tuple[str, str]:
-    """Load STT, VAD, and Piper exactly once, on demand."""
-    global stt_model, vad_model, speech_model
-
-    if vad_model is None:
-        _ensure_vad_model()
-        info("Loading Silero VAD ONNX")
-        vad_model = SileroOnnxVAD(VAD_MODEL_PATH)
-
-    if stt_model is None:
-        info(
-            f"Loading faster-whisper {WHISPER_MODEL_NAME!r} "
-            f"(CPU INT8, threads={WHISPER_THREADS})"
-        )
-        stt_model = WhisperModel(
-            WHISPER_MODEL_NAME,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=WHISPER_THREADS,
-            num_workers=1,
-            download_root=str(WHISPER_DATA_DIR),
-        )
-
-    if speech_model is None:
-        info(f"Loading Piper voice {PIPER_MODEL.name!r}")
-        speech_model = PiperVoice.load(str(PIPER_MODEL))
-
-    info(
-        f"Voice models ready: STT={WHISPER_MODEL_NAME}, "
-        f"VAD=Silero-ONNX, Piper={PIPER_MODEL.name}"
-    )
-    return WHISPER_MODEL_NAME, PIPER_MODEL.name
-
-
-def _callback(indata, frames, time_info, status) -> None:
-    audio_queue.put(indata[:, 0].copy())
 
 
 def list_microphones() -> list[tuple[int, str]]:
     devices = sd.query_devices()
     return [
-        (index, str(info["name"]))
-        for index, info in enumerate(devices)
-        if info.get("max_input_channels", 0) > 0
+        (index, str(device["name"]))
+        for index, device in enumerate(devices)
+        if device.get("max_input_channels", 0) > 0
     ]
 
 
@@ -191,60 +83,79 @@ def choose_microphone() -> int:
             return selected
 
 
-def _write_wav(samples: np.ndarray) -> Path:
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
-    samples = np.asarray(samples, dtype=np.float32)
-    samples = samples - float(np.mean(samples))
+def load_voice_models(device: int | None = None) -> tuple[str, str]:
+    """Load Moonshine and Piper exactly once, on demand."""
+    global speech_model
+    global moonshine_model_path, moonshine_model_arch, moonshine_mic, moonshine_device
 
-    rms = float(np.sqrt(np.mean(np.square(samples))) + 1e-9)
-    if rms < 0.045:
-        gain = min(4.0, 0.045 / rms)
-        samples = samples * gain
+    selected_device = get_saved_device() if device is None else device
+    if selected_device is None:
+        selected_device = choose_microphone()
 
-    path = TEMP_DIR / f"utterance_{int(time.time() * 1000)}.wav"
-    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
-    with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(16000)
-        wav.writeframes(pcm.tobytes())
-    return path
+    if moonshine_mic is None or moonshine_device != selected_device:
+        if moonshine_mic is not None:
+            try:
+                moonshine_mic.stop()
+            except Exception:
+                pass
+            try:
+                moonshine_mic.close()
+            except Exception:
+                pass
 
-
-def _transcribe(path: Path) -> str:
-    if stt_model is None:
-        load_voice_models()
-
-    segments, meta = stt_model.transcribe(
-        str(path),
-        language="en",
-        beam_size=5,
-        best_of=5,
-        temperature=0.0,
-        condition_on_previous_text=False,
-        vad_filter=False,
-        no_speech_threshold=0.60,
-        compression_ratio_threshold=2.4,
-        log_prob_threshold=-1.0,
-    )
-
-    parts: list[str] = []
-    for segment in segments:
-        text = segment.text.strip()
-        if text:
-            parts.append(text)
-
-    transcript = re.sub(r"\s+", " ", " ".join(parts)).strip()
-    if transcript.casefold() in {"[blank_audio]", "[blank audio]", "(blank audio)"}:
-        info("STT produced a blank-audio marker; discarding it.")
-        return ""
-
-    if not transcript:
         info(
-            "STT produced an empty transcript "
-            f"(language={getattr(meta, 'language', 'unknown')!r})"
+            "Loading Moonshine Voice small-streaming model "
+            f"for microphone device {selected_device}"
         )
-    return transcript
+        moonshine_model_path, moonshine_model_arch = get_model_for_language(
+            "en",
+            wanted_model_arch=MOONSHINE_MODEL_ARCH,
+            cache_root=MOONSHINE_DATA_DIR,
+        )
+
+        moonshine_mic = (
+            MicTranscriber()
+            .language("en")
+            .model_arch(MOONSHINE_MODEL_ARCH)
+            .device(selected_device)
+            .update_interval(0.25)
+        )
+        moonshine_mic.load()
+        moonshine_device = selected_device
+
+    if speech_model is None:
+        info(f"Loading Piper voice {PIPER_MODEL.name!r}")
+        speech_model = PiperVoice.load(str(PIPER_MODEL))
+
+    info(
+        "Voice models ready: "
+        "STT=Moonshine small-streaming, "
+        f"device={moonshine_device}, Piper={PIPER_MODEL.name}"
+    )
+    return "moonshine-small-streaming", PIPER_MODEL.name
+
+
+class _LineListener(TranscriptEventListener):
+    def __init__(
+        self,
+        result_event: threading.Event,
+        result_box: dict[str, str],
+    ) -> None:
+        self.result_event = result_event
+        self.result_box = result_box
+
+    def on_line_completed(self, event) -> None:
+        text = re.sub(r"\s+", " ", (event.line.text or "")).strip()
+        if not text:
+            return
+
+        self.result_box["text"] = text
+        info(f"Moonshine transcript: {text!r}")
+        self.result_event.set()
+
+    def on_error(self, event) -> None:
+        error = getattr(event, "error", event)
+        exception(f"Moonshine voice error: {error}")
 
 
 def listen_once(
@@ -255,117 +166,44 @@ def listen_once(
     if selected is None:
         selected = choose_microphone()
 
-    while not audio_queue.empty():
-        try:
-            audio_queue.get_nowait()
-        except queue.Empty:
-            break
+    load_voice_models(selected)
+    assert moonshine_mic is not None
 
-    load_voice_models()
-    assert vad_model is not None
+    result_event = threading.Event()
+    result_box: dict[str, str] = {"text": ""}
+    listener = _LineListener(result_event, result_box)
 
-    sample_rate = 16000
-    block_size = 512
-    max_seconds = 10.0
-    min_voice_seconds = 0.12
-    silence_seconds = 0.55
-    onset_threshold = 0.55
-    release_threshold = 0.32
-    pre_roll_blocks = 8
+    moonshine_mic.remove_all_listeners()
+    moonshine_mic.add_listener(listener)
 
-    started = False
-    quiet_blocks = 0
-    voiced_blocks = 0
-    silence_started: float | None = None
-    chunks: list[np.ndarray] = []
-    pre_roll: deque[np.ndarray] = deque(maxlen=pre_roll_blocks)
-    total_samples = 0
+    info(f"Moonshine microphone listening on device {selected}")
 
-    vad_model.reset()
+    try:
+        moonshine_mic.start()
 
-    info(
-        f"Microphone capture starting on device {selected} "
-        f"(Silero threshold={onset_threshold:.2f}, release={release_threshold:.2f})"
-    )
-
-    with sd.InputStream(
-        samplerate=sample_rate,
-        blocksize=block_size,
-        channels=1,
-        dtype="float32",
-        callback=_callback,
-        device=selected,
-        latency="low",
-    ):
-        while True:
+        while not result_event.wait(0.10):
             if stop_event and stop_event.is_set():
+                moonshine_mic.stop()
                 return ""
 
-            try:
-                chunk = audio_queue.get(timeout=0.12)
-            except queue.Empty:
-                continue
+        # Give the recognizer a tiny amount of time to settle the final event
+        # before the audio device is handed back to the rest of ULTRON.
+        result_event.wait(0.05)
+        moonshine_mic.stop()
 
-            probability = vad_model.probability(chunk)
-            now = time.monotonic()
-
-            if not started:
-                pre_roll.append(chunk)
-
-                if probability >= onset_threshold:
-                    voiced_blocks += 1
-                else:
-                    voiced_blocks = 0
-
-                if voiced_blocks >= max(2, int(min_voice_seconds / 0.032)):
-                    started = True
-                    silence_started = None
-                    info(
-                        f"Voice onset detected: vad_probability={probability:.3f}"
-                    )
-                    chunks.extend(list(pre_roll))
-                    total_samples += sum(len(item) for item in pre_roll)
-                continue
-
-            chunks.append(chunk)
-            total_samples += len(chunk)
-
-            if probability < release_threshold:
-                quiet_blocks += 1
-                if silence_started is None:
-                    silence_started = now
-                elif now - silence_started >= silence_seconds:
-                    info(
-                        f"Voice end detected: vad_probability={probability:.3f}, "
-                        f"duration={total_samples / sample_rate:.2f}s"
-                    )
-                    break
-            else:
-                quiet_blocks = 0
-                silence_started = None
-
-            if total_samples >= int(max_seconds * sample_rate):
-                info("Voice capture reached maximum utterance duration.")
-                break
-
-    minimum_samples = int(0.18 * sample_rate)
-    if not chunks or total_samples < minimum_samples:
-        info("Discarding capture that was too short to be useful.")
-        return ""
-
-    path = _write_wav(np.concatenate(chunks))
-    try:
-        transcript = _transcribe(path)
-        info(f"STT transcript: {transcript!r}")
+        transcript = result_box["text"].strip()
+        if transcript:
+            info(f"Voice worker heard: {transcript!r}")
         return transcript
     except Exception:
-        exception("Speech transcription failed")
+        exception("Moonshine microphone capture failed")
+        try:
+            moonshine_mic.stop()
+        except Exception:
+            pass
         raise
     finally:
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        moonshine_mic.remove_all_listeners()
 
 
 def _speech_chunks(text: str) -> list[str]:
