@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MOONSHINE_DATA_DIR = ROOT / "voice_models" / "moonshine_voice"
 MOONSHINE_TEMP_DIR = ROOT / "tmp" / "moonshine"
-MODEL_ARCH_NAME = "small-streaming"
+MODEL_ARCH_NAME = "medium-streaming"
 
 
 def main() -> None:
