@@ -15,6 +15,8 @@ import sounddevice as sd
 from pywhispercpp.model import Model
 from piper import PiperVoice
 
+from debug import info, warning, exception, log_path
+
 ROOT = Path(__file__).resolve().parent
 WHISPER_DATA_DIR = ROOT / "voice_models" / "whispercpp_data"
 WHISPER_MODELS_DIR = WHISPER_DATA_DIR / "models"
@@ -45,19 +47,28 @@ def load_voice_models() -> tuple[str, str]:
     global stt_model, speech_model
 
     if stt_model is None:
+        info(f"Loading Whisper model {WHISPER_MODEL_NAME!r}")
         stt_model = Model(
             WHISPER_MODEL_NAME,
             models_dir=str(WHISPER_MODELS_DIR),
             params_sampling_strategy=1,
-            beam_search={"beam_size": 3, "patience": 1.0},
             print_progress=False,
             print_realtime=False,
             n_threads=WHISPER_THREADS,
         )
+        try:
+            stt_model._params.beam_search["beam_size"] = 3
+            stt_model._params.beam_search["patience"] = 1.0
+            stt_model._params.temperature = 0.0
+            stt_model._params.no_speech_thold = 0.60
+        except Exception:
+            warning("Could not customize Whisper decoder parameters; using library defaults.")
 
     if speech_model is None:
+        info(f"Loading Piper voice {PIPER_MODEL.name!r}")
         speech_model = PiperVoice.load(str(PIPER_MODEL))
 
+    info(f"Voice models ready: Whisper={WHISPER_MODEL_NAME}, Piper={PIPER_MODEL.name}")
     return WHISPER_MODEL_NAME, PIPER_MODEL.name
 
 
@@ -195,6 +206,7 @@ def listen_once(
     total_samples = 0
     voiced_chunks = 0
 
+    info(f"Microphone capture starting on device {selected}")
     with sd.InputStream(
         samplerate=sample_rate,
         blocksize=1024,
@@ -215,6 +227,10 @@ def listen_once(
             calibration_total += len(chunk)
 
         floor = _noise_floor(calibration_chunks)
+        info(
+            f"Mic calibration complete: device={selected}, "
+            f"noise_floor={floor:.6f}"
+        )
 
         # Speech must rise well above the measured room floor.
         # The lower release threshold avoids chopping quiet words.
@@ -268,7 +284,12 @@ def listen_once(
 
     path = _write_wav(np.concatenate(chunks), noise_floor=floor)
     try:
-        return _transcribe(path)
+        transcript = _transcribe(path)
+        info(f"Whisper transcript: {transcript!r}")
+        return transcript
+    except Exception:
+        exception("Whisper transcription failed")
+        raise
     finally:
         try:
             path.unlink()
@@ -297,6 +318,7 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
     if speech_model is None:
         load_voice_models()
 
+    info(f"TTS starting: {text[:160]!r}")
     with _speech_lock:
         stream = sd.RawOutputStream(
             samplerate=speech_model.config.sample_rate,
@@ -318,6 +340,7 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
         finally:
             stream.stop()
             stream.close()
+            info("TTS finished")
 
 
 def speak_streaming(
