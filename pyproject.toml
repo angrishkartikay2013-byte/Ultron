@@ -5,9 +5,8 @@ description = "ULTRON GENESIS local Windows AI assistant"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "faster-whisper>=1.1.0",
+    "moonshine-voice>=0.1.5",
     "numpy>=2.3.0",
-    "onnxruntime>=1.16.1",
     "piper-tts>=1.8.0",
     "pyautogui>=0.9.54",
     "pyopengl>=3.1.10",
