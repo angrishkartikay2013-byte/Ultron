@@ -57,12 +57,17 @@ def load_voice_models() -> tuple[str, str]:
             n_threads=WHISPER_THREADS,
         )
         try:
-            stt_model._params.beam_search["beam_size"] = 3
+            stt_model._params.beam_search["beam_size"] = 5
             stt_model._params.beam_search["patience"] = 1.0
             stt_model._params.temperature = 0.0
             stt_model._params.no_speech_thold = 0.60
         except Exception:
             warning("Could not customize Whisper decoder parameters; using library defaults.")
+        else:
+            info(
+                "Whisper decoder: beam_search beam_size=5, "
+                "temperature=0, no_speech_thold=0.60"
+            )
 
     if speech_model is None:
         info(f"Loading Piper voice {PIPER_MODEL.name!r}")
