@@ -18,16 +18,23 @@ OLLAMA_MODELS = os.getenv("OLLAMA_MODELS", r"E:\ULTRON\models")
 OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
 CPU_THREADS = int(os.getenv("ULTRON_CPU_THREADS", str(max(2, min(4, os.cpu_count() or 4)))))
 
-SYSTEM_PROMPT = """You are ULTRON GENESIS, a local Windows desktop assistant.
-Address the user as Founder.
-Be concise, natural, and useful.
-Silently correct obvious speech transcription errors.
+SYSTEM_PROMPT = """You are ULTRON GENESIS, a capable local personal desktop assistant.
+Speak like a sharp, relaxed human assistant, not a customer-support bot.
+Match the user's tone and level of detail.
+Be useful first: answer directly, then add context only when it helps.
+Use the conversation history to remember what the user is talking about.
+Do not repeat the user's sentence or give canned openings like "How can I help you today?".
+Do not apologize unless an actual mistake needs acknowledging.
+If speech recognition produced an obviously garbled phrase, silently infer the most plausible meaning from context; when genuinely ambiguous, ask one short clarifying question instead of inventing facts.
+For casual conversation, respond naturally and conversationally.
+For technical questions, be precise and practical.
 Never reveal private chain-of-thought.
 """
 REFLEX_SYSTEM_PROMPT = """You are ULTRON, a fast local assistant.
-Address the user as Founder.
-Answer naturally and briefly.
-Silently infer obvious speech errors.
+Be natural, direct, and concise.
+Use prior context when available.
+Avoid canned customer-service phrases.
+If a short utterance is ambiguous, ask rather than hallucinate.
 """
 
 _SESSION = requests.Session()
@@ -175,12 +182,14 @@ def _payload_options(
     model: str,
     max_output_tokens: int,
     num_ctx: int,
+    *,
+    structured: bool = False,
 ) -> dict[str, Any]:
     if model == HEAVY_MODEL:
         return {
-            "temperature": 0.15,
-            "top_p": 0.85,
-            "top_k": 30,
+            "temperature": 0.12 if structured else 0.28,
+            "top_p": 0.88 if structured else 0.92,
+            "top_k": 24 if structured else 40,
             "num_ctx": num_ctx,
             "num_predict": max_output_tokens,
             "num_thread": CPU_THREADS,
@@ -189,9 +198,9 @@ def _payload_options(
         }
 
     return {
-        "temperature": 0.1,
-        "top_p": 0.8,
-        "top_k": 20,
+        "temperature": 0.05 if structured else 0.32,
+        "top_p": 0.90 if structured else 0.92,
+        "top_k": 24 if structured else 40,
         "num_ctx": num_ctx,
         "num_predict": max_output_tokens,
         "num_thread": CPU_THREADS,
@@ -215,7 +224,7 @@ def _effective_limits(
 ) -> tuple[int, int]:
     limits = {
         MICRO_MODEL: (24, 128),
-        AGENT_MODEL: (32, 768),
+        AGENT_MODEL: (96, 768),
         FAST_MODEL: (96, 768),
         MID_MODEL: (128, 1024),
         HEAVY_MODEL: (192, 2048),
@@ -247,11 +256,11 @@ def warm_model(model: str = FAST_MODEL) -> str:
 
 
 def warm_speed_stack() -> tuple[str, str]:
-    # Warm the tiny reflex brain first when installed, then the 1.5B fast brain.
-    # If the tiny model is absent, warm_model() transparently falls back.
-    reflex = warm_model(AGENT_MODEL)
+    # Keep the stronger 1.5B conversational/operator brain warm, plus the 3B
+    # reasoning brain for deeper turns.
     fast = warm_model(FAST_MODEL)
-    return reflex, fast
+    reasoning = warm_model(MID_MODEL)
+    return fast, reasoning
 
 
 def _messages(
@@ -347,6 +356,7 @@ def chat(
             selected_model,
             effective_output,
             effective_ctx,
+            structured=bool(response_format or system_extra.strip()),
         ),
     }
     if response_format:
@@ -393,6 +403,7 @@ def stream_chat(
                 selected_model,
                 effective_output,
                 effective_ctx,
+                structured=bool(system_extra.strip()),
             ),
         },
         timeout=(1.5, timeout),
