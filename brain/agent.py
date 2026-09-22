@@ -221,9 +221,11 @@ def handle_prompt(prompt: str) -> str:
         _remember(prompt, response)
         return response
 
-    context = _model_context(route.history_turns) + [
-        {"role": "user", "content": prompt}
-    ]
+    context = (
+        _model_context(route.history_turns)
+        if route.history_turns > 0
+        else []
+    ) + [{"role": "user", "content": prompt}]
     response = chat(
         context,
         model=route.model,
