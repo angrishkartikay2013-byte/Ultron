@@ -266,7 +266,7 @@ def vision_chat(
     image_bytes: bytes,
     timeout: int = 90,
     max_output_tokens: int = 128,
-    response_format: str | None = None,
+    response_format: str | dict[str, Any] | None = None,
 ) -> str:
     selected_model = choose_model(VISION_MODEL) if VISION_MODEL in installed_models() else VISION_MODEL
     if selected_model not in installed_models():
