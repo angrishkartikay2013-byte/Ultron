@@ -64,6 +64,13 @@ class StartupWorker(QThread):
     failed = Signal(str)
     finished_background = Signal()
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
     def run(self) -> None:
         # Only the tiny micro-brain blocks the orb from appearing.
         try:
@@ -88,7 +95,12 @@ class StartupWorker(QThread):
 
         for label, task in background_tasks:
             while not background_idle():
+                if self.stop_event.is_set():
+                    return
                 time.sleep(0.5)
+
+            if self.stop_event.is_set():
+                return
 
             try:
                 self.status.emit(f"Background: loading {label}…")
@@ -98,10 +110,15 @@ class StartupWorker(QThread):
                 else:
                     self.status.emit(f"Background: {label} online")
             except Exception as exc:
+                if self.stop_event.is_set():
+                    return
                 exception(f"Background startup failed: {label}")
                 self.status.emit(
                     f"Background: {label} skipped • {exc} • debug: {log_path()}"
                 )
+
+        if self.stop_event.is_set():
+            return
 
         self.status.emit("Background: larger brains remain on-demand.")
         self.finished_background.emit()
@@ -739,6 +756,12 @@ class GenesisOrb(QWidget):
         if self.reply and self.reply.isRunning():
             self.reply.terminate()
             self.reply.wait(200)
+
+        boot_worker = getattr(QApplication.instance(), "_ultron_boot_worker", None)
+        if boot_worker is not None and boot_worker.isRunning():
+            boot_worker.stop()
+            boot_worker.wait(1000)
+
         event.accept()
 
 
