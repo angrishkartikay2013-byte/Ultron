@@ -37,7 +37,7 @@ def main() -> None:
 
     model_path, model_arch = get_model_for_language(
         "en",
-        wanted_model_arch=ModelArch.SMALL_STREAMING,
+        wanted_model_arch=ModelArch.MEDIUM_STREAMING,
         cache_root=MOONSHINE_DATA_DIR,
     )
 
