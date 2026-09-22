@@ -8,27 +8,13 @@ TOOL = {
     "description": "Open a Windows desktop application. Pass its plain application name.",
 }
 
-ALIASES = {
-    "calculator": "calc.exe",
-    "calc": "calc.exe",
-    "notepad": "notepad.exe",
-    "paint": "mspaint.exe",
-    "microsoft paint": "mspaint.exe",
-    "cmd": "cmd.exe",
-    "command prompt": "cmd.exe",
-    "powershell": "powershell.exe",
-    "explorer": "explorer.exe",
-    "file explorer": "explorer.exe",
-    "settings": "ms-settings:",
-}
-
 
 def run(app: str = "", name: str = "", application: str = "", **kwargs) -> str:
     value = (app or name or application).strip().lower()
     if not value:
         raise ValueError("No application name was supplied.")
 
-    target = ALIASES.get(value, value)
+    target = value
 
     if target.endswith(":"):
         os.startfile(target)
