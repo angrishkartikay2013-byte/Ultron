@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 import requests
 
-from .router import AGENT_MODEL, FAST_MODEL, HEAVY_MODEL, MID_MODEL, VISION_MODEL
+from .router import AGENT_MODEL, FAST_MODEL, HEAVY_MODEL, MID_MODEL, MICRO_MODEL, VISION_MODEL
 
 BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
@@ -124,13 +124,14 @@ def choose_ready_model(preferred: str) -> str:
         FAST_MODEL: (FAST_MODEL, AGENT_MODEL),
         AGENT_MODEL: (AGENT_MODEL, FAST_MODEL),
         VISION_MODEL: (VISION_MODEL,),
+        MICRO_MODEL: (MICRO_MODEL, AGENT_MODEL),
     }
 
     for candidate in priorities.get(preferred, (preferred, FAST_MODEL, AGENT_MODEL)):
         if candidate in loaded:
             return candidate
 
-    for candidate in (AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL):
+    for candidate in (MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL):
         if candidate in loaded:
             return candidate
 
@@ -297,7 +298,7 @@ def chat(
     selected_model = choose_ready_model(model or FAST_MODEL)
     system = (
         REFLEX_SYSTEM_PROMPT
-        if selected_model == AGENT_MODEL and not system_extra.strip()
+        if selected_model in {MICRO_MODEL, AGENT_MODEL} and not system_extra.strip()
         else SYSTEM_PROMPT
     )
     if system_extra.strip():
@@ -338,7 +339,7 @@ def stream_chat(
     selected_model = choose_ready_model(model or FAST_MODEL)
     system = (
         REFLEX_SYSTEM_PROMPT
-        if selected_model == AGENT_MODEL and not system_extra.strip()
+        if selected_model in {MICRO_MODEL, AGENT_MODEL} and not system_extra.strip()
         else SYSTEM_PROMPT
     )
     if system_extra.strip():
