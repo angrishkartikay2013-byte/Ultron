@@ -22,7 +22,7 @@ def main() -> None:
     tempfile.tempdir = str(MOONSHINE_TEMP_DIR)
 
     _, _, free_bytes = shutil.disk_usage(MOONSHINE_DATA_DIR)
-    if free_bytes < 300 * 1024 * 1024:
+    if free_bytes < 700 * 1024 * 1024:
         raise RuntimeError(
             "ULTRON needs at least 300 MB free on the drive containing "
             f"{MOONSHINE_DATA_DIR}. Only {free_bytes / (1024 * 1024):.1f} MB is free. "
@@ -31,7 +31,7 @@ def main() -> None:
 
     from moonshine_voice import ModelArch, get_model_for_language
 
-    print("Preparing Moonshine Voice small-streaming English model...")
+    print("Preparing Moonshine Voice medium-streaming English model...")
     print(f"Model cache: {MOONSHINE_DATA_DIR}")
     print(f"Temporary downloads: {MOONSHINE_TEMP_DIR}")
 
