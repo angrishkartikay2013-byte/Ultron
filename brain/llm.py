@@ -16,7 +16,7 @@ BASE_URL = os.getenv("ULTRON_OLLAMA_URL", "http://127.0.0.1:11434")
 URL = f"{BASE_URL}/api/chat"
 OLLAMA_MODELS = os.getenv("OLLAMA_MODELS", r"E:\ULTRON\models")
 OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
-CPU_THREADS = max(4, os.cpu_count() or 4)
+CPU_THREADS = int(os.getenv("ULTRON_CPU_THREADS", str(max(2, min(4, os.cpu_count() or 4)))))
 
 SYSTEM_PROMPT = """You are ULTRON GENESIS, a local Windows desktop assistant.
 Address the user as Founder.
@@ -143,9 +143,14 @@ def choose_model(preferred: str) -> str:
     if preferred in models:
         return preferred
 
-    if preferred == AGENT_MODEL:
+    if preferred == MICRO_MODEL:
+        if AGENT_MODEL in models:
+            return AGENT_MODEL
         if FAST_MODEL in models:
             return FAST_MODEL
+
+    if preferred == AGENT_MODEL and FAST_MODEL in models:
+        return FAST_MODEL
 
     if preferred == HEAVY_MODEL and MID_MODEL in models:
         return MID_MODEL
@@ -162,8 +167,6 @@ def choose_model(preferred: str) -> str:
         return sorted(models)[0]
 
     raise RuntimeError("No Ollama models are installed.")
-
-
 def _payload_options(
     model: str,
     max_output_tokens: int,
