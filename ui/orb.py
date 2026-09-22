@@ -28,7 +28,7 @@ from brain.router import MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_
 VK_Y = 0x59
 VK_CONTROL = 0x11
 
-_BACKGROUND_IDLE_SECONDS = 15.0
+_BACKGROUND_IDLE_SECONDS = 30.0
 _ACTIVITY_LOCK = threading.Lock()
 _LAST_ACTIVITY = time.monotonic()
 _ULTRON_BUSY = threading.Event()
@@ -420,11 +420,6 @@ class GenesisOrb(QWidget):
             self.speech.stop()
             self.speech.wait(250)
 
-        self.speech = SpeechWorker(self)
-        self.speech.started_speaking.connect(self.speech_started)
-        self.speech.finished.connect(self.speech_finished)
-        self.speech.start()
-
         self.reply = ReplyWorker(prompt, self)
         self.reply.chunk.connect(self.reply_chunk)
         self.reply.ready.connect(self.reply_ready)
@@ -437,6 +432,13 @@ class GenesisOrb(QWidget):
     def reply_chunk(self, token: str) -> None:
         if not self.popup:
             return
+
+        if self.speech is None or not self.speech.isRunning():
+            self.speech = SpeechWorker(self)
+            self.speech.started_speaking.connect(self.speech_started)
+            self.speech.finished.connect(self.speech_finished)
+            self.speech.start()
+
         self._response_text += token
         self.popup.text.setText(
             f"Founder: {self._active_prompt}\n\nULTRON:\n{self._response_text}"
