@@ -195,26 +195,24 @@ def handle_prompt(prompt: str) -> str:
         response = str(data.get("response", "")).strip()
         mission = data.get("mission", [])
 
-        if mode is None:
-            if isinstance(mission, list) and mission:
-                mode = "mission"
-            elif response:
-                mode = "reply"
-
-        if mode == "mission":
-            if not isinstance(mission, list) or not mission:
-                raise ValueError("Operator returned no mission.")
-
+        # A structured mission is authoritative regardless of the model's
+        # mode label. Small local models sometimes return a valid mission
+        # while incorrectly labeling the envelope as "reply".
+        if isinstance(mission, list) and mission:
             results = execute(mission)
             failed = next((item for item in results if not item.get("ok")), None)
 
             if failed:
-                # Repair only when necessary.
+                info(
+                    f"Mission execution failed: step={failed.get('step')} "
+                    f"tool={failed.get('tool')} error={failed.get('error')}"
+                )
                 repair_context = _model_context(1) + [{
                     "role": "user",
                     "content": (
                         prompt
-                        + "\nRepair the failed mission. Tool error: "
+                        + "
+Repair the failed mission. Tool error: "
                         + str(failed.get("error", "unknown error"))
                     ),
                 }]
@@ -227,11 +225,11 @@ def handle_prompt(prompt: str) -> str:
                     response_format=_OPERATOR_SCHEMA,
                 )
                 repaired_data = _extract_json(repaired)
+                repaired_mission = repaired_data.get("mission", [])
                 info(
                     f"Operator repair JSON: mode={repaired_data.get('mode')!r} "
-                    f"mission_steps={len(repaired_data.get('mission', [])) if isinstance(repaired_data.get('mission'), list) else 'invalid'}"
+                    f"mission_steps={len(repaired_mission) if isinstance(repaired_mission, list) else 'invalid'}"
                 )
-                repaired_mission = repaired_data.get("mission", [])
                 if isinstance(repaired_mission, list) and repaired_mission:
                     mission = repaired_mission
                     response = str(
@@ -252,15 +250,22 @@ def handle_prompt(prompt: str) -> str:
             else:
                 response = response or "Mission completed."
 
+            info(
+                f"Mission executed: steps={len(mission)} "
+                f"result={'failed' if failed else 'success'}"
+            )
             _remember(prompt, response)
             return response
 
-        if mode != "reply":
-            raise ValueError(f"Unknown ULTRON mode: {mode!r}")
+        if mode == "reply":
+            response_cache.put(prompt, response)
+            _remember(prompt, response)
+            return response
 
-        response_cache.put(prompt, response)
-        _remember(prompt, response)
-        return response
+        if mode == "mission":
+            raise ValueError("Operator requested a mission but returned no mission.")
+
+        raise ValueError(f"Unknown ULTRON mode: {mode!r}")
 
     context = (
         _model_context(route.history_turns)
