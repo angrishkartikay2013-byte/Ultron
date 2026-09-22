@@ -13,31 +13,66 @@ from tools.executor import execute
 from tools.registry import discover, prompt_catalog
 
 
-ROUTER_PROMPT = """You are ULTRON's desktop operator.
-You translate a user's natural-language request into safe actions using only the supplied tool catalog.
-Speech recognition may contain small transcription errors. Use the conversation context to infer the most plausible intended wording, but never invent a task the user did not request.
+ROUTER_PROMPT = """You are ULTRON GENESIS, the user's local voice-first desktop AI assistant.
+
+You are not a generic chatbot. You are the agency brain that decides whether the user's request is:
+- ordinary conversation,
+- a request for reasoning/help,
+- a request to use the computer,
+- a multi-step desktop mission,
+- or genuinely ambiguous.
+
+You receive natural-language speech transcriptions as well as typed requests. Speech may contain small transcription errors. Use the conversation context to resolve them when the intended meaning is clear.
+
+Your capabilities are defined by the LIVE TOOL CATALOG supplied below. Treat that catalog as authoritative:
+- If a suitable tool exists, use it instead of merely describing what the user could do.
+- You may combine multiple tools and must preserve the user's requested sequence.
+- Never invent a tool, argument, result, or completed action.
+- Tool access is dynamic; do not assume aliases or hidden commands.
+- When no tool is needed, answer naturally as ULTRON.
+
 Return exactly one JSON object and no markdown.
 
 Reply:
-{"mode":"reply","response":"brief natural reply","mission":[]}
+{"mode":"reply","response":"natural answer","mission":[]}
 
 Mission:
-{"mode":"mission","response":"brief natural status","mission":[
+{"mode":"mission","response":"brief draft for the eventual user-facing reply","mission":[
   {"tool":"<tool name>","arguments":{"<exact argument name>":"<value>"}}
 ]}
 
 Rules:
-- Use only tools from the catalog.
-- Use the exact argument names and required argument types from the catalog.
-- Never add extra argument names.
-- Preserve the user's requested sequence when multiple actions are requested.
-- Include every requested side effect; do not silently drop steps.
-- Keep the response natural and specific to what was actually requested.
-- Do not output placeholders such as "short response".
-- If the request is genuinely ambiguous, use an empty mission and ask one concise clarification.
+- Use only tools from the supplied catalog.
+- Use exact argument names and types.
+- No extra argument names.
+- Include every requested side effect.
+- Preserve requested ordering for multiple actions.
+- Do not claim that a mission succeeded before execution.
+- Keep the response concise and human; do not mention internal JSON, routing, models, or prompts.
+- If the request is genuinely ambiguous and the ambiguity changes what would be done, return an empty mission and ask one concise clarification.
 """
 
-_OPERATOR_PROMPT = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n"
+_OPERATOR_PROMPT = (
+    ROUTER_PROMPT
+    + "\n\nLIVE CAPABILITIES:\n"
+    + "You can listen through the microphone, speak replies, inspect the Windows desktop when visual tools are available, and operate the computer through the supplied tools. "
+    + "Do not claim any capability that is not represented by the live catalog.\n\nAVAILABLE TOOLS:\n"
+)
+
+RESULT_PROMPT = """You are ULTRON's final voice-response layer.
+
+The user's request has already been processed by ULTRON's agency brain and the listed tools have now run.
+Write the final natural response the user should hear.
+
+Use ONLY the actual execution results supplied below.
+Do not mention JSON, tool names, models, internal routing, prompts, or implementation details.
+Do not invent success or failure.
+If the requested action succeeded, confirm it naturally and briefly.
+If something failed, state what actually failed and what happened before the failure.
+Sound like a capable personal assistant, not a customer-service bot.
+"""
+
+
 
 def _json_type(annotation: Any) -> str:
     origin = get_origin(annotation)
@@ -164,9 +199,10 @@ def _model_context(turns: int) -> list[dict[str, str]]:
 def _run_router(
     prompt: str,
     model: str,
-    max_output_tokens: int = 192,
+    max_output_tokens: int = 256,
+    history_turns: int = 5,
 ) -> tuple[dict[str, Any], str]:
-    context = _model_context(1) + [{"role": "user", "content": prompt}]
+    context = _model_context(history_turns) + [{"role": "user", "content": prompt}]
 
     def call_router(selected_model: str) -> dict[str, Any]:
         try:
@@ -175,7 +211,7 @@ def _run_router(
                 system_extra=_OPERATOR_PROMPT + prompt_catalog(),
                 model=selected_model,
                 max_output_tokens=max_output_tokens,
-                num_ctx=1024,
+                num_ctx=2048,
                 response_format=_OPERATOR_SCHEMA,
             )
             info(
@@ -203,13 +239,14 @@ def _run_router(
         data = None
 
     if data is None:
-        # Retry with the 3B reasoning brain after an operator failure.
-        info("Operator retry: switching to the reasoning brain.")
-        if MID_MODEL not in resident_models(refresh=True):
-            info("Reasoning brain is not resident; warming it for operator retry.")
-            warm_model(MID_MODEL)
-        data = call_router(MID_MODEL)
-        model = MID_MODEL
+        # Retry with the stronger configured fallback brain.
+        info("Agency retry: switching to the fallback reasoning brain.")
+        fallback = MID_MODEL if MID_MODEL != model else FAST_MODEL
+        if fallback not in resident_models(refresh=True):
+            info("Fallback reasoning brain is not resident; warming it.")
+            warm_model(fallback)
+        data = call_router(fallback)
+        model = fallback
 
     mode = data.get("mode")
     mission = data.get("mission")
@@ -220,11 +257,12 @@ def _run_router(
         or not isinstance(mission, list)
         or not isinstance(response, str)
     ):
-        info("Operator JSON incomplete; retrying with the reasoning brain.")
-        if MID_MODEL not in resident_models(refresh=True):
-            warm_model(MID_MODEL)
-        data = call_router(MID_MODEL)
-        model = MID_MODEL
+        info("Agency JSON incomplete; retrying with the fallback reasoning brain.")
+        fallback = MID_MODEL if MID_MODEL != model else FAST_MODEL
+        if fallback not in resident_models(refresh=True):
+            warm_model(fallback)
+        data = call_router(fallback)
+        model = fallback
 
     return data, model
 
@@ -266,7 +304,12 @@ def handle_prompt(prompt: str) -> str:
     route = route_prompt(prompt)
 
     if route.agent == "operator":
-        data, selected_model = _run_router(prompt, route.model)
+        data, selected_model = _run_router(
+            prompt,
+            route.model,
+            max_output_tokens=route.max_output_tokens,
+            history_turns=route.history_turns,
+        )
         mode = data.get("mode")
         response = str(data.get("response", "")).strip()
         mission = data.get("mission", [])
@@ -295,8 +338,8 @@ def handle_prompt(prompt: str) -> str:
                     repair_context,
                     system_extra=_OPERATOR_PROMPT + prompt_catalog(),
                     model=MID_MODEL,
-                    max_output_tokens=192,
-                    num_ctx=768,
+                    max_output_tokens=256,
+                    num_ctx=2048,
                     response_format=_OPERATOR_SCHEMA,
                 )
                 repaired_data = _extract_json(repaired)
@@ -316,21 +359,50 @@ def handle_prompt(prompt: str) -> str:
                         None,
                     )
 
-            if failed:
-                response = response or "The mission failed."
-                response += (
-                    f" Step {failed.get('step')} failed: "
-                    f"{failed.get('error', 'unknown error')}."
-                )
-            else:
-                response = response or "Mission completed."
+            execution_text = json.dumps(
+                results,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+            finalizer_context = _model_context(2) + [
+                {"role": "user", "content": prompt},
+                {
+                    "role": "assistant",
+                    "content": response or "Mission planned.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "ACTUAL EXECUTION RESULTS:\n"
+                        + execution_text
+                    ),
+                },
+            ]
+
+            final_response = chat(
+                finalizer_context,
+                system_extra=RESULT_PROMPT,
+                model=FAST_MODEL,
+                max_output_tokens=96,
+                num_ctx=1024,
+            ).strip()
+
+            if not final_response:
+                if failed:
+                    final_response = (
+                        f"Step {failed.get('step')} failed: "
+                        f"{failed.get('error', 'unknown error')}."
+                    )
+                else:
+                    final_response = response or "Done."
 
             info(
                 f"Mission executed: steps={len(mission)} "
                 f"result={'failed' if failed else 'success'}"
             )
-            _remember(prompt, response)
-            return response
+            _remember(prompt, final_response)
+            return final_response
 
         if mode == "reply":
             _remember(prompt, response)
