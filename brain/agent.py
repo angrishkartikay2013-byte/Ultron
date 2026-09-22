@@ -50,6 +50,63 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
     text = prompt.strip()
+    text = re.sub(
+        r"^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+)",
+        "",
+        text,
+        flags=re.I,
+    ).strip()
+    text = re.sub(r"\s+(?:please|thanks?)\s*[.!?]*$", "", text, flags=re.I).strip()
+
+    # Screen-vision commands go straight to the visual cortex.
+    if re.match(
+        r"^(?:look at|show me|describe|what(?:'s| is) on|what do you see on) "
+        r"(?:my\s+)?(?:screen|display)$",
+        text,
+        flags=re.I,
+    ) or re.match(r"^(?:look around|what do you see|use your eyes)$", text, flags=re.I):
+        return [{"tool": "screen_vision", "arguments": {"action": "describe"}}]
+
+    match = re.match(
+        r"^(?:find|locate|look for)\s+(.+?)(?:\s+on\s+(?:my\s+)?screen)?$",
+        text,
+        flags=re.I,
+    )
+    if match:
+        return [{
+            "tool": "screen_vision",
+            "arguments": {"action": "locate", "task": match.group(1).strip()},
+        }]
+
+    match = re.match(
+        r"^(?:click|tap)\s+(.+?)(?:\s+on\s+(?:my\s+)?screen)?$",
+        text,
+        flags=re.I,
+    )
+    if match:
+        return [{
+            "tool": "screen_vision",
+            "arguments": {"action": "click", "task": match.group(1).strip()},
+        }]
+
+    match = re.match(
+        r"^(?:double[- ]?click|double tap)\s+(.+?)(?:\s+on\s+(?:my\s+)?screen)?$",
+        text,
+        flags=re.I,
+    )
+    if match:
+        return [{
+            "tool": "screen_vision",
+            "arguments": {"action": "double_click", "task": match.group(1).strip()},
+        }]
+
+    # Small, common desktop actions bypass the tiny JSON router.
+    match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
+    if match:
+        app = match.group(1).strip(" .")
+        if app:
+            app = re.sub(r"\s+app$", "", app, flags=re.I).strip()
+            return [{"tool": "open_app", "arguments": {"app": app}}]
 
     match = re.match(
         r"^(?:open|launch|start)\s+(.+?)\s+(?:and|then)\s+(?:type|write|enter)\s+(.+)$",
@@ -66,12 +123,6 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
             {"tool": "open_app", "arguments": {"app": app}},
             {"tool": "wait", "arguments": {"seconds": 0.5}},
             {"tool": "type_text", "arguments": {"text": value}},
-        ]
-
-    match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
-    if match and len(text.split()) <= 8:
-        return [
-            {"tool": "open_app", "arguments": {"app": match.group(1).strip(" .")}}
         ]
 
     match = re.match(
@@ -114,6 +165,7 @@ def _run_router(
         model=model,
         max_output_tokens=max_output_tokens,
         num_ctx=640,
+        response_format="json",
     )
     return _extract_json(routed), model
 
@@ -188,6 +240,7 @@ def handle_prompt(prompt: str) -> str:
                     model=MID_MODEL,
                     max_output_tokens=96,
                     num_ctx=768,
+                    response_format="json",
                 )
                 repaired_data = _extract_json(repaired)
                 repaired_mission = repaired_data.get("mission", [])
