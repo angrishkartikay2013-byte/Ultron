@@ -78,8 +78,8 @@ class StartupWorker(QThread):
         # Large brains load on demand so they cannot evict the reflex/fast
         # pair or compete with a live response for CPU/RAM.
         background_tasks = [
-            ("voice engine", self._warm_voice),
             ("fast brain", lambda: warm_model(FAST_MODEL)),
+            ("voice engine", self._warm_voice),
         ]
 
         for label, task in background_tasks:
