@@ -122,6 +122,12 @@ def handle_prompt(prompt: str) -> str:
         response = str(data.get("response", "")).strip()
         mission = data.get("mission", [])
 
+        if mode is None:
+            if isinstance(mission, list) and mission:
+                mode = "mission"
+            elif response:
+                mode = "reply"
+
         if mode == "mission":
             if not isinstance(mission, list) or not mission:
                 raise ValueError("Operator returned no mission.")
