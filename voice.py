@@ -159,13 +159,21 @@ def _transcribe(path: Path) -> str:
         print_progress=False,
         print_realtime=False,
         no_context=True,
+        suppress_blank=True,
+        suppress_non_speech_tokens=True,
+        temperature=0.0,
+        no_speech_thold=0.55,
     )
     parts = []
     for segment in segments:
         text = getattr(segment, "text", str(segment)).strip()
         if text:
             parts.append(text)
-    return re.sub(r"\s+", " ", " ".join(parts)).strip()
+    transcript = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    if transcript.casefold() in {"[blank_audio]", "[blank audio]", "(blank audio)"}:
+        info("Whisper produced a blank-audio marker; discarding it.")
+        return ""
+    return transcript
 
 
 def _noise_floor(chunks: list[np.ndarray]) -> float:
@@ -195,7 +203,7 @@ def listen_once(
 
     sample_rate = 16000
     silence_seconds = 0.85
-    max_seconds = 10.0
+    max_seconds = 8.0
 
     # Learn the room tone first so constant fan/AC/PC noise does not trigger
     # the microphone gate.
@@ -239,8 +247,8 @@ def listen_once(
 
         # Speech must rise well above the measured room floor.
         # The lower release threshold avoids chopping quiet words.
-        onset_threshold = max(0.0028, floor * 1.35)
-        release_threshold = max(0.0018, floor * 1.10)
+        onset_threshold = max(0.0010, floor * 1.60)
+        release_threshold = max(0.00065, floor * 1.18)
 
         while True:
             if stop_event and stop_event.is_set():
@@ -266,6 +274,7 @@ def listen_once(
 
                 if voiced_chunks >= 2:
                     started = True
+                    info(f"Voice onset detected: rms={rms:.6f}, threshold={onset_threshold:.6f}")
                     chunks.extend(list(pre_roll))
                     total_samples += sum(len(item) for item in pre_roll)
                 continue
@@ -282,6 +291,7 @@ def listen_once(
                 silence_started = None
 
             if total_samples >= int(max_seconds * sample_rate):
+                info("Voice capture reached maximum utterance duration.")
                 break
 
     if not chunks:
