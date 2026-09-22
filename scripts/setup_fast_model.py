@@ -10,6 +10,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 OLLAMA = Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"))
 MODEL_DIR = ROOT / "models"
+MICRO_MODEL = "smollm2:135m-instruct-q4_0"
 MODEL = "qwen2.5:0.5b-instruct"
 VISION_MODEL = "qwen2.5vl:3b"
 BASE_URL = "http://127.0.0.1:11434"
@@ -32,7 +33,7 @@ def start_ollama() -> None:
     env["OLLAMA_MODELS"] = str(MODEL_DIR)
     env["OLLAMA_HOST"] = "127.0.0.1:11434"
     env["OLLAMA_KEEP_ALIVE"] = "90m"
-    env["OLLAMA_MAX_LOADED_MODELS"] = "2"
+    env["OLLAMA_MAX_LOADED_MODELS"] = "3"
     env["OLLAMA_NUM_PARALLEL"] = "1"
 
     subprocess.Popen(
@@ -58,6 +59,7 @@ def main() -> None:
         raise FileNotFoundError(f"Ollama executable not found: {OLLAMA}")
 
     print(f"ULTRON model directory: {MODEL_DIR}")
+    print(f"Installing micro model: {MICRO_MODEL}")
     print(f"Installing reflex model: {MODEL}")
     print(f"Installing visual cortex: {VISION_MODEL}")
     stop_ollama()
@@ -66,6 +68,7 @@ def main() -> None:
     env = os.environ.copy()
     env["OLLAMA_MODELS"] = str(MODEL_DIR)
 
+    subprocess.run([str(OLLAMA), "pull", MICRO_MODEL], env=env, check=True)
     subprocess.run([str(OLLAMA), "pull", MODEL], env=env, check=True)
     subprocess.run([str(OLLAMA), "pull", VISION_MODEL], env=env, check=True)
 
