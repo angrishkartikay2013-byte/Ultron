@@ -135,12 +135,17 @@ def load_voice_models(device: int | None = None) -> str:
             cache_root=MOONSHINE_DATA_DIR,
         )
 
-        moonshine_mic = MicTranscriber(
-            model_path=model_path,
-            model_arch=model_arch,
+        # Moonshine Voice's current API uses an empty constructor plus
+        # chainable configuration setters. Keep the explicit cached model
+        # directory so we continue using E:\\ULTRON rather than the Windows
+        # user cache/temp directories.
+        moonshine_mic = (
+            MicTranscriber()
+            .models_from(model_path)
+            .model_arch(model_arch)
+            .device(selected_device)
+            .update_interval(0.18)
         )
-        moonshine_mic.device(selected_device)
-        moonshine_mic.update_interval(0.18)
         moonshine_mic.load()
         moonshine_device = selected_device
 
