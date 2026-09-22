@@ -6,6 +6,7 @@ import os
 
 # Agents are logical roles. The tiny reflex model is optional; if it is not
 # installed, the runtime falls back to the existing 1.5B model.
+MICRO_MODEL = os.getenv("ULTRON_MICRO_MODEL", "smollm2:135m-instruct-q4_0")
 AGENT_MODEL = os.getenv("ULTRON_AGENT_MODEL", "qwen2.5:0.5b-instruct")
 FAST_MODEL = os.getenv("ULTRON_FAST_MODEL", "qwen2.5:1.5b")
 MID_MODEL = os.getenv("ULTRON_MID_MODEL", "qwen2.5:3b")
@@ -97,8 +98,11 @@ def route_prompt(prompt: str) -> Route:
     if length > 90 or any(term in text for term in _MID_TERMS):
         return Route("reasoner", MID_MODEL, 128, 1024, 3)
 
-    # Tiny reflex model handles very short conversational turns.
-    # The 1.5B fast brain handles normal conversation that needs more nuance.
+    # The micro-brain handles tiny, low-risk conversational turns.
+    # The 0.5B reflex brain handles slightly richer short turns.
+    if length <= 20:
+        return Route("micro", MICRO_MODEL, 24, 128, 0)
+
     if length <= 40:
         return Route("conversation_reflex", AGENT_MODEL, 32, 256, 0)
 
