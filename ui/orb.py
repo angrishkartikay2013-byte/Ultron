@@ -288,6 +288,7 @@ class GenesisOrb(QWidget):
         self._response_text = ""
         self._generation_finished = False
         self._speech_finished = False
+        self.boot_status = "Reflex brain starting…"
 
         screen = QApplication.primaryScreen()
         if screen:
@@ -340,6 +341,7 @@ class GenesisOrb(QWidget):
         self.popup.move(self.popup_pos())
         self.popup.show()
         self.popup.raise_()
+        self.popup.set_activity(self.boot_status)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
@@ -581,21 +583,18 @@ def run_genesis() -> int:
         orb.raise_()
         app.processEvents()
 
-        orb.show_popup()
         orb.set_state("idle")
-        orb.popup.text.setText(
-            "ULTRON ONLINE. Reflex brain active; larger brains are loading in background."
-        )
-        orb.popup.set_activity(
-            "BOOT: reflex online\n"
-            "BACKGROUND: voice + fast + reasoning + vision + builder loading…"
+        orb.boot_status = (
+            "REFLEX ONLINE\n"
+            "Voice, fast, reasoning, vision, and builder brains loading in background…"
         )
 
-        worker.status.connect(
-            lambda message: orb.popup.set_activity(
-                "BOOT: reflex online\n" + message
-            ) if orb.popup else None
-        )
+        def update_boot_status(message: str) -> None:
+            orb.boot_status = message
+            if orb.popup is not None:
+                orb.popup.set_activity(message)
+
+        worker.status.connect(update_boot_status)
 
     def background_done() -> None:
         orb = getattr(app, "_ultron_orb", None)
@@ -607,11 +606,14 @@ def run_genesis() -> int:
 
     def startup_failed(message: str) -> None:
         orb = getattr(app, "_ultron_orb", None)
-        if orb is not None:
-            orb.set_state("error")
-            orb.show_popup()
-            orb.popup.text.setText("Brain startup warning:\n" + message)
-            orb.popup.set_activity("Reflex brain could not start.")
+        if orb is None:
+            orb = GenesisOrb()
+            app._ultron_orb = orb
+            orb.show()
+        orb.set_state("error")
+        orb.show_popup()
+        orb.popup.text.setText("Brain startup warning:\n" + message)
+        orb.popup.set_activity("Reflex brain could not start.")
 
     worker.ready.connect(attach_orb)
     worker.finished_background.connect(background_done)
