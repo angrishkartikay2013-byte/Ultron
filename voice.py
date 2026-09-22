@@ -22,7 +22,7 @@ WHISPER_MODELS_DIR = WHISPER_DATA_DIR / "models"
 os.environ.setdefault("XDG_DATA_HOME", str(WHISPER_DATA_DIR))
 
 # tiny.en is substantially lighter than base.en and is better suited to the i7-4770T.
-WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "tiny.en")
+WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "base.en")
 WHISPER_THREADS = max(2, min(4, os.cpu_count() or 4))
 PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
 DEVICE_FILE = ROOT / "memory" / "audio_device.json"
@@ -48,6 +48,8 @@ def load_voice_models() -> tuple[str, str]:
         stt_model = Model(
             WHISPER_MODEL_NAME,
             models_dir=str(WHISPER_MODELS_DIR),
+            params_sampling_strategy=1,
+            beam_search={"beam_size": 3, "patience": 1.0},
             print_progress=False,
             print_realtime=False,
             n_threads=WHISPER_THREADS,
@@ -113,14 +115,14 @@ def _write_wav(samples: np.ndarray, noise_floor: float = 0.0) -> Path:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     samples = np.asarray(samples, dtype=np.float32)
     samples = samples - float(np.mean(samples))
-    if noise_floor > 0:
-        # Gentle adaptive noise gate: reduce constant low-level room noise
-        # without deleting the quiet parts of speech.
-        gate = max(0.0012, min(0.01, noise_floor * 1.25))
-        magnitude = np.abs(samples)
-        soft = np.clip((magnitude - gate) / max(gate, 1e-5), 0.0, 1.0)
-        gain = 0.18 + 0.82 * soft
+
+    # Preserve speech shape. Only boost genuinely quiet recordings instead of
+    # applying a hard gate that can distort consonants and word endings.
+    rms = float(np.sqrt(np.mean(np.square(samples))) + 1e-9)
+    if rms < 0.055:
+        gain = min(5.0, 0.055 / rms)
         samples = samples * gain
+
     path = TEMP_DIR / f"utterance_{int(time.time() * 1000)}.wav"
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
     with wave.open(str(path), "wb") as wav:
@@ -176,7 +178,7 @@ def listen_once(
             break
 
     sample_rate = 16000
-    silence_seconds = 0.72
+    silence_seconds = 0.85
     max_seconds = 10.0
 
     # Learn the room tone first so constant fan/AC/PC noise does not trigger
@@ -216,8 +218,8 @@ def listen_once(
 
         # Speech must rise well above the measured room floor.
         # The lower release threshold avoids chopping quiet words.
-        onset_threshold = max(0.0032, floor * 1.55)
-        release_threshold = max(0.0022, floor * 1.20)
+        onset_threshold = max(0.0028, floor * 1.35)
+        release_threshold = max(0.0018, floor * 1.10)
 
         while True:
             if stop_event and stop_event.is_set():
