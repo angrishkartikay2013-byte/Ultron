@@ -215,19 +215,19 @@ def _run_router(
                 response_format=_OPERATOR_SCHEMA,
             )
             info(
-                f"Operator raw output: model={selected_model} "
+                f"Agency raw output: model={selected_model} "
                 f"{routed[:500]!r}"
             )
             data = _extract_json(routed)
         except Exception as exc:
             info(
-                f"Operator attempt failed: model={selected_model} "
+                f"Agency attempt failed: model={selected_model} "
                 f"error={exc}"
             )
             raise
 
         info(
-            f"Operator JSON: model={selected_model} "
+            f"Agency JSON: model={selected_model} "
             f"mode={data.get('mode')!r} "
             f"mission_steps={len(data.get('mission', [])) if isinstance(data.get('mission'), list) else 'invalid'}"
         )
@@ -303,7 +303,7 @@ def handle_prompt(prompt: str) -> str:
 
     route = route_prompt(prompt)
 
-    if route.agent == "operator":
+    if route.agent == "agent":
         data, selected_model = _run_router(
             prompt,
             route.model,
@@ -345,7 +345,7 @@ def handle_prompt(prompt: str) -> str:
                 repaired_data = _extract_json(repaired)
                 repaired_mission = repaired_data.get("mission", [])
                 info(
-                    f"Operator repair JSON: mode={repaired_data.get('mode')!r} "
+                    f"Agency repair JSON: mode={repaired_data.get('mode')!r} "
                     f"mission_steps={len(repaired_mission) if isinstance(repaired_mission, list) else 'invalid'}"
                 )
                 if isinstance(repaired_mission, list) and repaired_mission:
@@ -440,7 +440,7 @@ def stream_prompt(prompt: str) -> Iterator[str]:
 
     route = route_prompt(prompt)
 
-    if route.agent == "operator":
+    if route.agent == "agent":
         yield handle_prompt(prompt)
         return
 
