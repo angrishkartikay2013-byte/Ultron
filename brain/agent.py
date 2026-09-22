@@ -22,7 +22,7 @@ Reply:
 
 Mission:
 {"mode":"mission","response":"short status","mission":[
-  {"tool":"open_app","arguments":{"app":"notepad"}}
+  {"tool":"<tool name>","arguments":{"<argument>":"<value>"}}
 ]}
 
 Rules:
