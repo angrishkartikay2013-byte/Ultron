@@ -69,6 +69,7 @@ class StartupWorker(QThread):
             self.status.emit("Starting reflex brain…")
             reflex = warm_model(AGENT_MODEL)
             self.status.emit(f"Reflex online • {reflex}")
+            mark_activity()
             self.ready.emit()
         except Exception as exc:
             self.failed.emit(f"Reflex startup failed: {exc}")
