@@ -323,7 +323,7 @@ def chat(
     model: str | None = None,
     max_output_tokens: int = 72,
     num_ctx: int = 768,
-    response_format: str | None = None,
+    response_format: str | dict[str, Any] | None = None,
 ) -> str:
     selected_model = choose_ready_model(model or FAST_MODEL)
     effective_output, effective_ctx = _effective_limits(
