@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import inspect
 import re
-from typing import Any, Iterator
+from typing import Any, Iterator, get_args, get_origin, get_type_hints
 
 from .core import history, _save
 from .llm import chat, stream_chat, resident_models, warm_model
 from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, route_prompt
 from debug import info
 from tools.executor import execute
-from tools.registry import prompt_catalog
+from tools.registry import discover, prompt_catalog
 
 
 ROUTER_PROMPT = """You are ULTRON's desktop operator.
@@ -38,27 +39,103 @@ Rules:
 
 _OPERATOR_PROMPT = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n"
 
-_OPERATOR_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "mode": {"type": "string", "enum": ["reply", "mission"]},
-        "response": {"type": "string"},
-        "mission": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "tool": {"type": "string"},
-                    "arguments": {"type": "object"},
-                },
-                "required": ["tool", "arguments"],
-                "additionalProperties": False,
+def _json_type(annotation: Any) -> str:
+    origin = get_origin(annotation)
+    if origin in {list, tuple, set}:
+        return "array"
+    if origin is dict:
+        return "object"
+    if annotation is int:
+        return "integer"
+    if annotation is float:
+        return "number"
+    if annotation is bool:
+        return "boolean"
+    return "string"
+
+
+def _tool_argument_schema(spec: Any) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    try:
+        hints = get_type_hints(spec.run)
+    except Exception:
+        hints = {}
+
+    for name, parameter in inspect.signature(spec.run).parameters.items():
+        if name in {"self", "cls"}:
+            continue
+        if parameter.kind in {
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        }:
+            continue
+
+        annotation = hints.get(name, parameter.annotation)
+        if annotation is inspect._empty:
+            annotation = str
+
+        origin = get_origin(annotation)
+        args = get_args(annotation)
+
+        if origin is not None and type(None) in args:
+            non_none = [item for item in args if item is not type(None)]
+            if non_none:
+                properties[name] = {
+                    "anyOf": [
+                        {"type": _json_type(non_none[0])},
+                        {"type": "null"},
+                    ]
+                }
+            else:
+                properties[name] = {}
+        else:
+            properties[name] = {"type": _json_type(annotation)}
+
+        if parameter.default is inspect._empty:
+            required.append(name)
+
+    result: dict[str, Any] = {
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": False,
+    }
+    if required:
+        result["required"] = required
+    return result
+
+
+def _operator_schema() -> dict[str, Any]:
+    variants: list[dict[str, Any]] = []
+
+    for name, spec in sorted(discover().items()):
+        variants.append({
+            "type": "object",
+            "properties": {
+                "tool": {"const": name},
+                "arguments": _tool_argument_schema(spec),
+            },
+            "required": ["tool", "arguments"],
+            "additionalProperties": False,
+        })
+
+    return {
+        "type": "object",
+        "properties": {
+            "mode": {"type": "string", "enum": ["reply", "mission"]},
+            "response": {"type": "string"},
+            "mission": {
+                "type": "array",
+                "items": {"oneOf": variants},
             },
         },
-    },
-    "required": ["mode", "response", "mission"],
-    "additionalProperties": False,
-}
+        "required": ["mode", "response", "mission"],
+        "additionalProperties": False,
+    }
+
+
+_OPERATOR_SCHEMA = _operator_schema()
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -87,7 +164,7 @@ def _model_context(turns: int) -> list[dict[str, str]]:
 def _run_router(
     prompt: str,
     model: str,
-    max_output_tokens: int = 128,
+    max_output_tokens: int = 192,
 ) -> tuple[dict[str, Any], str]:
     context = _model_context(1) + [{"role": "user", "content": prompt}]
 
@@ -98,7 +175,7 @@ def _run_router(
                 system_extra=_OPERATOR_PROMPT + prompt_catalog(),
                 model=selected_model,
                 max_output_tokens=max_output_tokens,
-                num_ctx=768,
+                num_ctx=1024,
                 response_format=_OPERATOR_SCHEMA,
             )
             info(
@@ -218,7 +295,7 @@ def handle_prompt(prompt: str) -> str:
                     repair_context,
                     system_extra=_OPERATOR_PROMPT + prompt_catalog(),
                     model=MID_MODEL,
-                    max_output_tokens=128,
+                    max_output_tokens=192,
                     num_ctx=768,
                     response_format=_OPERATOR_SCHEMA,
                 )
