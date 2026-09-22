@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from brain.agent import stream_prompt
-from brain.llm import warm_model
+from brain.llm import resident_model_for, warm_model
 from brain.router import MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION_MODEL, route_prompt
 
 
@@ -406,9 +406,13 @@ class GenesisOrb(QWidget):
         self._active_prompt = prompt
         self._response_text = ""
         route = route_prompt(prompt)
+        try:
+            actual_model = resident_model_for(route.model)
+        except Exception:
+            actual_model = route.model
         self.popup.text.setText(f"Founder: {prompt}\n\nULTRON:")
         self.popup.set_activity(
-            f"Route: {route.agent.upper()}  •  Model: {route.model}\n"
+            f"Route: {route.agent.upper()}  •  Model: {actual_model}\n"
             "Stage: generating reply + preparing speech…"
         )
 
