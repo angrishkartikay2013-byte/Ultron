@@ -201,6 +201,23 @@ def _keep_alive(model: str) -> str:
     return "10m"
 
 
+def _effective_limits(
+    model: str,
+    max_output_tokens: int,
+    num_ctx: int,
+) -> tuple[int, int]:
+    limits = {
+        MICRO_MODEL: (24, 128),
+        AGENT_MODEL: (32, 256),
+        FAST_MODEL: (96, 768),
+        MID_MODEL: (128, 1024),
+        HEAVY_MODEL: (192, 2048),
+        VISION_MODEL: (128, 768),
+    }
+    output_cap, ctx_cap = limits.get(model, (72, 768))
+    return min(max_output_tokens, output_cap), min(num_ctx, ctx_cap)
+
+
 def warm_model(model: str = FAST_MODEL) -> str:
     selected = choose_model(model)
     response = _SESSION.post(
@@ -275,7 +292,10 @@ def vision_chat(
             "stream": False,
             "think": False,
             "keep_alive": "5m",
-            "options": _payload_options(selected_model, max_output_tokens, 768),
+            "options": _payload_options(
+                selected_model,
+                *_effective_limits(selected_model, max_output_tokens, 768),
+            ),
         },
         timeout=timeout,
     )
@@ -296,6 +316,9 @@ def chat(
     num_ctx: int = 768,
 ) -> str:
     selected_model = choose_ready_model(model or FAST_MODEL)
+    effective_output, effective_ctx = _effective_limits(
+        selected_model, max_output_tokens, num_ctx
+    )
     system = (
         REFLEX_SYSTEM_PROMPT
         if selected_model in {MICRO_MODEL, AGENT_MODEL} and not system_extra.strip()
@@ -314,8 +337,8 @@ def chat(
             "keep_alive": _keep_alive(selected_model),
             "options": _payload_options(
                 selected_model,
-                max_output_tokens,
-                num_ctx,
+                effective_output,
+                effective_ctx,
             ),
         },
         timeout=timeout,
@@ -337,6 +360,9 @@ def stream_chat(
     num_ctx: int = 768,
 ) -> Iterator[str]:
     selected_model = choose_ready_model(model or FAST_MODEL)
+    effective_output, effective_ctx = _effective_limits(
+        selected_model, max_output_tokens, num_ctx
+    )
     system = (
         REFLEX_SYSTEM_PROMPT
         if selected_model in {MICRO_MODEL, AGENT_MODEL} and not system_extra.strip()
