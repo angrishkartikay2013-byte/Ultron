@@ -4,7 +4,6 @@ import json
 import re
 from typing import Any, Iterator
 
-from .cache import response_cache
 from .core import history, _save
 from .llm import chat, stream_chat, resident_models, warm_model
 from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, route_prompt
@@ -14,23 +13,27 @@ from tools.registry import prompt_catalog
 
 
 ROUTER_PROMPT = """You are ULTRON's desktop operator.
-Speech recognition can contain small transcription errors.
-Infer the intended command silently.
+You translate a user's natural-language request into safe actions using only the supplied tool catalog.
+Speech recognition may contain small transcription errors. Use the conversation context to infer the most plausible intended wording, but never invent a task the user did not request.
 Return exactly one JSON object and no markdown.
 
 Reply:
-{"mode":"reply","response":"short response","mission":[]}
+{"mode":"reply","response":"brief natural reply","mission":[]}
 
 Mission:
-{"mode":"mission","response":"short status","mission":[
-  {"tool":"<tool name>","arguments":{"<argument>":"<value>"}}
+{"mode":"mission","response":"brief natural status","mission":[
+  {"tool":"<tool name>","arguments":{"<exact argument name>":"<value>"}}
 ]}
 
 Rules:
-- Only use available tools.
-- Use exact argument names.
-- Never invent tools.
-- Keep the mission minimal.
+- Use only tools from the catalog.
+- Use the exact argument names and required argument types from the catalog.
+- Never add extra argument names.
+- Preserve the user's requested sequence when multiple actions are requested.
+- Include every requested side effect; do not silently drop steps.
+- Keep the response natural and specific to what was actually requested.
+- Do not output placeholders such as "short response".
+- If the request is genuinely ambiguous, use an empty mission and ask one concise clarification.
 """
 
 _OPERATOR_PROMPT = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n"
@@ -84,7 +87,7 @@ def _model_context(turns: int) -> list[dict[str, str]]:
 def _run_router(
     prompt: str,
     model: str,
-    max_output_tokens: int = 96,
+    max_output_tokens: int = 128,
 ) -> tuple[dict[str, Any], str]:
     context = _model_context(1) + [{"role": "user", "content": prompt}]
 
@@ -123,14 +126,13 @@ def _run_router(
         data = None
 
     if data is None:
-        # Retry with a stronger model. If the fast brain is not resident yet,
-        # warm it only after the tiny operator has actually failed.
-        info("Operator retry: switching to the fast resident brain.")
-        if FAST_MODEL not in resident_models(refresh=True):
-            info("Fast brain is not resident; warming it for operator retry.")
-            warm_model(FAST_MODEL)
-        data = call_router(FAST_MODEL)
-        model = FAST_MODEL
+        # Retry with the 3B reasoning brain after an operator failure.
+        info("Operator retry: switching to the reasoning brain.")
+        if MID_MODEL not in resident_models(refresh=True):
+            info("Reasoning brain is not resident; warming it for operator retry.")
+            warm_model(MID_MODEL)
+        data = call_router(MID_MODEL)
+        model = MID_MODEL
 
     mode = data.get("mode")
     mission = data.get("mission")
@@ -141,9 +143,11 @@ def _run_router(
         or not isinstance(mission, list)
         or not isinstance(response, str)
     ):
-        info("Operator JSON incomplete; retrying with the fast resident brain.")
-        data = call_router(FAST_MODEL)
-        model = FAST_MODEL
+        info("Operator JSON incomplete; retrying with the reasoning brain.")
+        if MID_MODEL not in resident_models(refresh=True):
+            warm_model(MID_MODEL)
+        data = call_router(MID_MODEL)
+        model = MID_MODEL
 
     return data, model
 
@@ -182,11 +186,6 @@ def handle_prompt(prompt: str) -> str:
     if mission is not None:
         return _execute_mission(prompt, mission)
 
-    cached = response_cache.get(prompt)
-    if cached is not None:
-        _remember(prompt, cached)
-        return cached
-
     route = route_prompt(prompt)
 
     if route.agent == "operator":
@@ -219,7 +218,7 @@ def handle_prompt(prompt: str) -> str:
                     repair_context,
                     system_extra=_OPERATOR_PROMPT + prompt_catalog(),
                     model=MID_MODEL,
-                    max_output_tokens=96,
+                    max_output_tokens=128,
                     num_ctx=768,
                     response_format=_OPERATOR_SCHEMA,
                 )
@@ -257,7 +256,6 @@ def handle_prompt(prompt: str) -> str:
             return response
 
         if mode == "reply":
-            response_cache.put(prompt, response)
             _remember(prompt, response)
             return response
 
@@ -277,7 +275,6 @@ def handle_prompt(prompt: str) -> str:
         max_output_tokens=route.max_output_tokens,
         num_ctx=route.num_ctx,
     )
-    response_cache.put(prompt, response)
     _remember(prompt, response)
     return response
 
@@ -290,12 +287,6 @@ def stream_prompt(prompt: str) -> Iterator[str]:
     mission = _direct_mission(prompt)
     if mission is not None:
         yield _execute_mission(prompt, mission)
-        return
-
-    cached = response_cache.get(prompt)
-    if cached is not None:
-        _remember(prompt, cached)
-        yield cached
         return
 
     route = route_prompt(prompt)
@@ -329,5 +320,4 @@ def stream_prompt(prompt: str) -> Iterator[str]:
 
     final = "".join(parts).strip()
     if final:
-        response_cache.put(prompt, final)
         _remember(prompt, final)
