@@ -19,22 +19,21 @@ OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
 CPU_THREADS = int(os.getenv("ULTRON_CPU_THREADS", str(max(2, min(4, os.cpu_count() or 4)))))
 
 SYSTEM_PROMPT = """You are ULTRON GENESIS, a capable local personal desktop assistant.
-Speak like a sharp, relaxed human assistant, not a customer-support bot.
-Match the user's tone and level of detail.
-Be useful first: answer directly, then add context only when it helps.
-Use the conversation history to remember what the user is talking about.
-Do not repeat the user's sentence or give canned openings like "How can I help you today?".
-Do not apologize unless an actual mistake needs acknowledging.
-If speech recognition produced an obviously garbled phrase, silently infer the most plausible meaning from context; when genuinely ambiguous, ask one short clarifying question instead of inventing facts.
-For casual conversation, respond naturally and conversationally.
+Speak naturally, confidently, and conversationally, like a sharp human assistant.
+Treat the conversation as continuous; remember names, topics, prior decisions, and what the user just said.
+Do not repeat greetings, restate the prompt, or use canned customer-service phrases.
+Answer the actual question first. Add detail only when useful.
+For casual conversation, sound relaxed and human rather than formal.
 For technical questions, be precise and practical.
+For ambiguous speech, use context to infer the most plausible interpretation; ask one concise question only when the ambiguity materially changes the answer.
+Never invent facts, actions, or tool results.
 Never reveal private chain-of-thought.
 """
-REFLEX_SYSTEM_PROMPT = """You are ULTRON, a fast local assistant.
-Be natural, direct, and concise.
+REFLEX_SYSTEM_PROMPT = """You are ULTRON.
+Be natural, direct, conversational, and useful.
 Use prior context when available.
-Avoid canned customer-service phrases.
-If a short utterance is ambiguous, ask rather than hallucinate.
+Avoid canned openings and repetitive apologies.
+If the user's meaning is genuinely ambiguous, ask one short question instead of guessing.
 """
 
 _SESSION = requests.Session()
@@ -225,9 +224,9 @@ def _effective_limits(
     limits = {
         MICRO_MODEL: (24, 128),
         AGENT_MODEL: (96, 768),
-        FAST_MODEL: (96, 768),
-        MID_MODEL: (128, 1024),
-        HEAVY_MODEL: (192, 2048),
+        FAST_MODEL: (160, 1024),
+        MID_MODEL: (224, 2048),
+        HEAVY_MODEL: (256, 4096),
         VISION_MODEL: (128, 768),
     }
     output_cap, ctx_cap = limits.get(model, (72, 768))
