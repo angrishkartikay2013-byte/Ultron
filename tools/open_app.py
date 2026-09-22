@@ -12,7 +12,6 @@ ALIASES = {
     "calculator": "calc.exe",
     "calc": "calc.exe",
     "notepad": "notepad.exe",
-    "note pad": "notepad.exe",
     "paint": "mspaint.exe",
     "microsoft paint": "mspaint.exe",
     "cmd": "cmd.exe",
