@@ -423,7 +423,6 @@ class GenesisOrb(QWidget):
         self.reply.chunk.connect(self.reply_chunk)
         self.reply.ready.connect(self.reply_ready)
         self.reply.failed.connect(self.reply_error)
-        self.reply.finished.connect(self.reply_finished)
 
         self.reply.start()
 
