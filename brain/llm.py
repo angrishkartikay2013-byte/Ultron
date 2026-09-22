@@ -194,7 +194,7 @@ def _payload_options(
 
 
 def _keep_alive(model: str) -> str:
-    if model in {AGENT_MODEL, FAST_MODEL}:
+    if model in {MICRO_MODEL, AGENT_MODEL, FAST_MODEL}:
         return "90m"
     if model == MID_MODEL:
         return "15m"
@@ -381,8 +381,8 @@ def stream_chat(
             "keep_alive": _keep_alive(selected_model),
             "options": _payload_options(
                 selected_model,
-                max_output_tokens,
-                num_ctx,
+                effective_output,
+                effective_ctx,
             ),
         },
         timeout=(1.5, timeout),
