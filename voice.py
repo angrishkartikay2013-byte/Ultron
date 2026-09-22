@@ -24,7 +24,12 @@ os.environ["TMP"] = str(MOONSHINE_TEMP_DIR)
 tempfile.tempdir = str(MOONSHINE_TEMP_DIR)
 
 import sounddevice as sd
-from moonshine_voice import MicTranscriber, ModelArch, TranscriptEventListener
+from moonshine_voice import (
+    MicTranscriber,
+    ModelArch,
+    TranscriptEventListener,
+    get_model_for_language,
+)
 from piper import PiperVoice
 
 from debug import info, exception
@@ -34,7 +39,11 @@ if not PIPER_MODEL.exists():
         f"Piper voice not found at {PIPER_MODEL}. Run: uv run scripts/setup_piper_voice.py"
     )
 
-MOONSHINE_MODEL_ARCH = ModelArch.MEDIUM_STREAMING
+_MOONSHINE_MODEL_NAME = os.getenv("ULTRON_VOICE_MODEL", "medium-streaming")
+MOONSHINE_MODEL_ARCH = {
+    "small-streaming": ModelArch.SMALL_STREAMING,
+    "medium-streaming": ModelArch.MEDIUM_STREAMING,
+}.get(_MOONSHINE_MODEL_NAME.casefold(), ModelArch.MEDIUM_STREAMING)
 
 speech_model: PiperVoice | None = None
 moonshine_mic: MicTranscriber | None = None
@@ -116,26 +125,31 @@ def load_voice_models(device: int | None = None) -> str:
                 pass
 
         info(
-            "Loading Moonshine Voice small-streaming model "
+            f"Loading Moonshine Voice {_MOONSHINE_MODEL_NAME} model "
             f"for microphone device {selected_device}"
         )
 
-        moonshine_mic = (
-            MicTranscriber()
-            .language("en")
-            .model_arch(MOONSHINE_MODEL_ARCH)
-            .device(selected_device)
-            .update_interval(0.18)
+        model_path, model_arch = get_model_for_language(
+            "en",
+            wanted_model_arch=MOONSHINE_MODEL_ARCH,
+            cache_root=MOONSHINE_DATA_DIR,
         )
+
+        moonshine_mic = MicTranscriber(
+            model_path=model_path,
+            model_arch=model_arch,
+        )
+        moonshine_mic.device(selected_device)
+        moonshine_mic.update_interval(0.18)
         moonshine_mic.load()
         moonshine_device = selected_device
 
     info(
         "Voice STT ready: "
-        f"Moonshine small-streaming, device={moonshine_device}, "
+        f"Moonshine {_MOONSHINE_MODEL_NAME}, device={moonshine_device}, "
         f"cache={MOONSHINE_DATA_DIR}"
     )
-    return "moonshine-small-streaming"
+    return f"moonshine-{_MOONSHINE_MODEL_NAME}"
 
 
 class _LineListener(TranscriptEventListener):
