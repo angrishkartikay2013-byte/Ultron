@@ -152,33 +152,23 @@ class SpeechWorker(QThread):
     started_speaking = Signal()
     finished = Signal()
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, text: str, parent: QWidget) -> None:
         super().__init__(parent)
+        self.text = text
         self.stop_event = threading.Event()
-        self.incoming: queue.Queue[str | None] = queue.Queue()
-
-    def feed(self, text: str) -> None:
-        if text and not self.stop_event.is_set():
-            self.incoming.put(text)
-
-    def finish_input(self) -> None:
-        if not self.stop_event.is_set():
-            self.incoming.put(None)
 
     def stop(self) -> None:
         self.stop_event.set()
-        self.incoming.put(None)
 
     def run(self) -> None:
         try:
-            from voice import speak_streaming
-            speak_streaming(
-                self.incoming,
-                self.stop_event,
-                started_callback=self.started_speaking.emit,
-            )
+            from voice import speak
+            if self.text.strip() and not self.stop_event.is_set():
+                self.started_speaking.emit()
+                speak(self.text, stop_event=self.stop_event)
         finally:
             self.finished.emit()
+
 
 
 @dataclass
@@ -516,42 +506,41 @@ class GenesisOrb(QWidget):
     def reply_chunk(self, token: str) -> None:
         self._response_text += token
         self.set_display(self._response_text)
-
-        if self.speech is None or not self.speech.isRunning():
-            self.speech = SpeechWorker(self)
-            self.speech.started_speaking.connect(self.speech_started)
-            self.speech.finished.connect(self.speech_finished)
-            self.speech.start()
-
-        if self.speech and self.speech.isRunning():
-            self.speech.feed(token)
-
-        self.set_activity("Generating • speech starts sentence-by-sentence")
+        self.set_activity("Writing response…")
         self.update()
+
 
     def reply_ready(self, text: str) -> None:
         self._generation_finished = True
-        if self.speech and self.speech.isRunning():
-            self.speech.finish_input()
-        elif text.strip():
-            self._start_emergency_speech(text)
-        else:
-            self._speech_finished = True
-            _ULTRON_BUSY.clear()
-            self.set_state("idle")
+        final_text = text.strip() or self._response_text.strip()
 
-    def speech_started(self) -> None:
-        self.set_state("speaking")
-        self.set_activity("Speaking • Ctrl+Y interrupts")
+        if final_text:
+            self.set_display(final_text)
+            self.set_activity("Response written • preparing voice…")
+            self._start_speech(final_text)
+            return
 
-    def _start_emergency_speech(self, text: str) -> None:
+        self._speech_finished = True
+        _ULTRON_BUSY.clear()
+        self.set_state("idle")
+        self.set_activity("Ready")
+
+    def _start_speech(self, text: str) -> None:
         self._speech_finished = False
-        self.speech = SpeechWorker(self)
+        if self.speech and self.speech.isRunning():
+            self.speech.stop()
+            self.speech.wait(250)
+
+        self.speech = SpeechWorker(text, self)
         self.speech.started_speaking.connect(self.speech_started)
         self.speech.finished.connect(self.speech_finished)
         self.speech.start()
-        self.speech.feed(text)
-        self.speech.finish_input()
+
+
+    def speech_started(self) -> None:
+        self.set_state("speaking")
+        self.set_activity("Speaking the completed response • Ctrl+Y interrupts")
+
 
     def speech_finished(self) -> None:
         self._speech_finished = True
@@ -559,12 +548,13 @@ class GenesisOrb(QWidget):
         mark_activity()
         self.speech = None
         self.set_state("idle")
-        self.set_activity("Ready • say something or drag the orb")
+        self.set_activity("Voice finished • waiting 1.5 seconds before listening")
         self._maybe_listen()
+
 
     def _maybe_listen(self) -> None:
         if self._generation_finished and self._speech_finished:
-            QTimer.singleShot(700, self.listen)
+            QTimer.singleShot(1500, self.listen)
 
     def interrupt(self) -> None:
         _ULTRON_BUSY.clear()
