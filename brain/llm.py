@@ -20,11 +20,14 @@ CPU_THREADS = max(4, os.cpu_count() or 4)
 
 SYSTEM_PROMPT = """You are ULTRON GENESIS, a local Windows desktop assistant.
 Address the user as Founder.
-Be concise, direct, useful, and natural.
-Speech input can contain obvious transcription or grammar errors; silently infer intent.
-Do not mention corrections.
-Do not reveal private chain-of-thought.
-For normal conversation, answer in at most 2 short sentences unless the user asks for detail.
+Be concise, natural, and useful.
+Silently correct obvious speech transcription errors.
+Never reveal private chain-of-thought.
+"""
+REFLEX_SYSTEM_PROMPT = """You are ULTRON, a fast local assistant.
+Address the user as Founder.
+Answer naturally and briefly.
+Silently infer obvious speech errors.
 """
 
 _SESSION = requests.Session()
@@ -32,6 +35,7 @@ _OLLAMA_READY = False
 _INSTALLED_MODELS: set[str] | None = None
 _LOADED_MODELS: tuple[set[str], float] | None = None
 _LOADED_LOCK = threading.Lock()
+RESIDENT_CACHE_TTL = 5.0
 
 
 def ensure_ollama() -> None:
@@ -95,7 +99,7 @@ def resident_models(refresh: bool = False) -> set[str]:
     with _LOADED_LOCK:
         if _LOADED_MODELS is not None and not refresh:
             models, timestamp = _LOADED_MODELS
-            if now - timestamp < 0.5:
+            if now - timestamp < RESIDENT_CACHE_TTL:
                 return set(models)
 
         response = _SESSION.get(f"{BASE_URL}/api/ps", timeout=2)
@@ -112,7 +116,7 @@ def resident_models(refresh: bool = False) -> set[str]:
 
 def choose_ready_model(preferred: str) -> str:
     """Choose only a resident model; never cause a cold model load."""
-    loaded = resident_models(refresh=True)
+    loaded = resident_models(refresh=False)
 
     priorities = {
         HEAVY_MODEL: (HEAVY_MODEL, MID_MODEL, FAST_MODEL, AGENT_MODEL),
@@ -291,7 +295,11 @@ def chat(
     num_ctx: int = 768,
 ) -> str:
     selected_model = choose_ready_model(model or FAST_MODEL)
-    system = SYSTEM_PROMPT
+    system = (
+        REFLEX_SYSTEM_PROMPT
+        if selected_model == AGENT_MODEL and not system_extra.strip()
+        else SYSTEM_PROMPT
+    )
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
 
@@ -328,7 +336,11 @@ def stream_chat(
     num_ctx: int = 768,
 ) -> Iterator[str]:
     selected_model = choose_ready_model(model or FAST_MODEL)
-    system = SYSTEM_PROMPT
+    system = (
+        REFLEX_SYSTEM_PROMPT
+        if selected_model == AGENT_MODEL and not system_extra.strip()
+        else SYSTEM_PROMPT
+    )
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
 
