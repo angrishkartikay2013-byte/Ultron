@@ -181,7 +181,7 @@ def listen_once(
 
     # Learn the room tone first so constant fan/AC/PC noise does not trigger
     # the microphone gate.
-    calibration_seconds = 0.45
+    calibration_seconds = 0.22
     calibration_samples = int(calibration_seconds * sample_rate)
     calibration_chunks: list[np.ndarray] = []
     calibration_total = 0
