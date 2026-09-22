@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import subprocess
+import threading
 import time
 from typing import Any, Iterator
 
@@ -29,6 +30,8 @@ For normal conversation, answer in at most 2 short sentences unless the user ask
 _SESSION = requests.Session()
 _OLLAMA_READY = False
 _INSTALLED_MODELS: set[str] | None = None
+_LOADED_MODELS: tuple[set[str], float] | None = None
+_LOADED_LOCK = threading.Lock()
 
 
 def ensure_ollama() -> None:
@@ -81,6 +84,51 @@ def installed_models(refresh: bool = False) -> set[str]:
         if item.get("name")
     }
     return _INSTALLED_MODELS
+
+def resident_models(refresh: bool = False) -> set[str]:
+    """Return models currently resident in Ollama memory, not merely installed."""
+    global _LOADED_MODELS
+
+    ensure_ollama()
+    now = time.monotonic()
+
+    with _LOADED_LOCK:
+        if _LOADED_MODELS is not None and not refresh:
+            models, timestamp = _LOADED_MODELS
+            if now - timestamp < 0.5:
+                return set(models)
+
+        response = _SESSION.get(f"{BASE_URL}/api/ps", timeout=2)
+        response.raise_for_status()
+        models = {
+            item.get("name") or item.get("model", "")
+            for item in response.json().get("models", [])
+            if item.get("name") or item.get("model")
+        }
+        _LOADED_MODELS = (models, now)
+        return set(models)
+
+
+
+def choose_ready_model(preferred: str) -> str:
+    """Choose the best model that is already resident; never trigger a load."""
+    loaded = resident_models(refresh=True)
+
+    priorities = {
+        HEAVY_MODEL: (HEAVY_MODEL, MID_MODEL, FAST_MODEL, AGENT_MODEL),
+        MID_MODEL: (MID_MODEL, FAST_MODEL, AGENT_MODEL),
+        FAST_MODEL: (FAST_MODEL, AGENT_MODEL),
+        AGENT_MODEL: (AGENT_MODEL,),
+        VISION_MODEL: (VISION_MODEL,),
+    }
+
+    for candidate in priorities.get(preferred, (preferred, FAST_MODEL, AGENT_MODEL)):
+        if candidate in loaded:
+            return candidate
+
+    # The reflex brain should be the first warm brain. If even that is not
+    # resident yet, let the normal selection logic choose an installed fallback.
+    return AGENT_MODEL if AGENT_MODEL in loaded else choose_model(preferred)
 
 
 def choose_model(preferred: str) -> str:
@@ -162,6 +210,9 @@ def warm_model(model: str = FAST_MODEL) -> str:
         timeout=120,
     )
     response.raise_for_status()
+    with _LOADED_LOCK:
+        global _LOADED_MODELS
+        _LOADED_MODELS = None
     return selected
 
 
@@ -238,7 +289,7 @@ def chat(
     max_output_tokens: int = 72,
     num_ctx: int = 768,
 ) -> str:
-    selected_model = choose_model(model or FAST_MODEL)
+    selected_model = choose_ready_model(model or FAST_MODEL)
     system = SYSTEM_PROMPT
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
@@ -275,7 +326,7 @@ def stream_chat(
     max_output_tokens: int = 72,
     num_ctx: int = 768,
 ) -> Iterator[str]:
-    selected_model = choose_model(model or FAST_MODEL)
+    selected_model = choose_ready_model(model or FAST_MODEL)
     system = SYSTEM_PROMPT
     if system_extra.strip():
         system += "\n\n" + system_extra.strip()
