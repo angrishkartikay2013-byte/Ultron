@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from .registry import discover
@@ -30,6 +31,8 @@ def execute(mission: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }]
 
         try:
+            signature = inspect.signature(spec.run)
+            signature.bind(**arguments)
             output = spec.run(**arguments)
             results.append({
                 "step": index,
