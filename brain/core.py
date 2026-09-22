@@ -45,14 +45,6 @@ def ask(prompt: str) -> str:
     if not prompt:
         return ""
 
-    quick = QUICK_REPLIES.get(prompt.casefold())
-    if quick:
-        history.append({"role": "user", "content": prompt})
-        history.append({"role": "assistant", "content": quick})
-        del history[:-MAX_MESSAGES]
-        _save()
-        return quick
-
     history.append({"role": "user", "content": prompt})
     del history[:-MAX_MESSAGES]
     reply = chat(history).strip()
