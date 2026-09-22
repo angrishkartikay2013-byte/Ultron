@@ -101,13 +101,6 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
         }]
 
     # Small, common desktop actions bypass the tiny JSON router.
-    match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
-    if match:
-        app = match.group(1).strip(" .")
-        if app:
-            app = re.sub(r"\s+app$", "", app, flags=re.I).strip()
-            return [{"tool": "open_app", "arguments": {"app": app}}]
-
     match = re.match(
         r"^(?:open|launch|start)\s+(.+?)\s+(?:and|then)\s+(?:type|write|enter)\s+(.+)$",
         text,
@@ -124,6 +117,13 @@ def _direct_mission(prompt: str) -> list[dict[str, Any]] | None:
             {"tool": "wait", "arguments": {"seconds": 0.5}},
             {"tool": "type_text", "arguments": {"text": value}},
         ]
+
+    match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, flags=re.I)
+    if match:
+        app = match.group(1).strip(" .")
+        if app:
+            app = re.sub(r"\s+app$", "", app, flags=re.I).strip()
+            return [{"tool": "open_app", "arguments": {"app": app}}]
 
     match = re.match(
         r"^(?:move|put)\s+(?:the\s+)?mouse\s+(?:to|at)\s+(.+)$",
