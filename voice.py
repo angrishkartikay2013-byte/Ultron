@@ -109,8 +109,18 @@ def choose_microphone() -> int:
             return selected
 
 
-def _write_wav(samples: np.ndarray) -> Path:
+def _write_wav(samples: np.ndarray, noise_floor: float = 0.0) -> Path:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    samples = np.asarray(samples, dtype=np.float32)
+    samples = samples - float(np.mean(samples))
+    if noise_floor > 0:
+        # Gentle adaptive noise gate: reduce constant low-level room noise
+        # without deleting the quiet parts of speech.
+        gate = max(0.0012, min(0.01, noise_floor * 1.25))
+        magnitude = np.abs(samples)
+        soft = np.clip((magnitude - gate) / max(gate, 1e-5), 0.0, 1.0)
+        gain = 0.18 + 0.82 * soft
+        samples = samples * gain
     path = TEMP_DIR / f"utterance_{int(time.time() * 1000)}.wav"
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
     with wave.open(str(path), "wb") as wav:
@@ -166,8 +176,8 @@ def listen_once(
             break
 
     sample_rate = 16000
-    silence_seconds = 0.50
-    max_seconds = 8.0
+    silence_seconds = 0.72
+    max_seconds = 10.0
 
     # Learn the room tone first so constant fan/AC/PC noise does not trigger
     # the microphone gate.
@@ -179,7 +189,7 @@ def listen_once(
     started = False
     silence_started: float | None = None
     chunks: list[np.ndarray] = []
-    pre_roll: deque[np.ndarray] = deque(maxlen=4)
+    pre_roll: deque[np.ndarray] = deque(maxlen=6)
     total_samples = 0
     voiced_chunks = 0
 
@@ -206,8 +216,8 @@ def listen_once(
 
         # Speech must rise well above the measured room floor.
         # The lower release threshold avoids chopping quiet words.
-        onset_threshold = max(0.009, floor * 2.8)
-        release_threshold = max(0.006, floor * 1.8)
+        onset_threshold = max(0.0032, floor * 1.55)
+        release_threshold = max(0.0022, floor * 1.20)
 
         while True:
             if stop_event and stop_event.is_set():
@@ -231,7 +241,7 @@ def listen_once(
                 else:
                     voiced_chunks = 0
 
-                if voiced_chunks >= 3:
+                if voiced_chunks >= 2:
                     started = True
                     chunks.extend(list(pre_roll))
                     total_samples += sum(len(item) for item in pre_roll)
@@ -254,7 +264,7 @@ def listen_once(
     if not chunks:
         return ""
 
-    path = _write_wav(np.concatenate(chunks))
+    path = _write_wav(np.concatenate(chunks), noise_floor=floor)
     try:
         return _transcribe(path)
     finally:
@@ -349,7 +359,7 @@ def speak_streaming(
                 buffer += item
 
                 while True:
-                    match = re.search(r"(?<=[.!?])(?:\s+|$)", buffer)
+                    match = re.search(r"(?<=[.!?])(?:\s+|$)|\n+", buffer)
                     if not match:
                         break
                     sentence = buffer[:match.end()]
@@ -357,6 +367,12 @@ def speak_streaming(
                     emit_sentence(sentence)
                     if stop_event.is_set():
                         break
+
+            # Leave a short real-audio tail in the device buffer so the final
+            # phoneme is fully rendered before the output stream is closed.
+            if not stop_event.is_set():
+                tail_samples = max(1, int(speech_model.config.sample_rate * 0.12))
+                stream.write(b"\x00\x00" * tail_samples)
         finally:
             stream.stop()
             stream.close()
