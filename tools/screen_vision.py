@@ -52,7 +52,12 @@ def _locate(task: str, action: str) -> dict[str, Any]:
         '"label":"","confidence":0}. '
         "Use screen pixel coordinates, not normalized coordinates."
     )
-    raw = vision_chat(prompt, _capture(), max_output_tokens=96)
+    raw = vision_chat(
+        prompt,
+        _capture(),
+        max_output_tokens=96,
+        response_format="json",
+    )
     data = _extract_json(raw)
 
     found = bool(data.get("found"))
