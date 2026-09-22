@@ -7,7 +7,8 @@ from typing import Any, Iterator
 from .cache import response_cache
 from .core import history, _save
 from .llm import chat, stream_chat
-from .router import AGENT_MODEL, MID_MODEL, route_prompt
+from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, route_prompt
+from debug import info
 from tools.executor import execute
 from tools.registry import prompt_catalog
 
@@ -33,6 +34,28 @@ Rules:
 """
 
 _OPERATOR_PROMPT = ROUTER_PROMPT + "\n\nAVAILABLE TOOLS:\n"
+
+_OPERATOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "mode": {"type": "string", "enum": ["reply", "mission"]},
+        "response": {"type": "string"},
+        "mission": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "tool": {"type": "string"},
+                    "arguments": {"type": "object"},
+                },
+                "required": ["tool", "arguments"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["mode", "response", "mission"],
+    "additionalProperties": False,
+}
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -64,15 +87,41 @@ def _run_router(
     max_output_tokens: int = 64,
 ) -> tuple[dict[str, Any], str]:
     context = _model_context(1) + [{"role": "user", "content": prompt}]
-    routed = chat(
-        context,
-        system_extra=_OPERATOR_PROMPT + prompt_catalog(),
-        model=model,
-        max_output_tokens=max_output_tokens,
-        num_ctx=640,
-        response_format="json",
-    )
-    return _extract_json(routed), model
+
+    def call_router(selected_model: str) -> dict[str, Any]:
+        routed = chat(
+            context,
+            system_extra=_OPERATOR_PROMPT + prompt_catalog(),
+            model=selected_model,
+            max_output_tokens=max_output_tokens,
+            num_ctx=640,
+            response_format=_OPERATOR_SCHEMA,
+        )
+        data = _extract_json(routed)
+        info(
+            f"Operator JSON: model={selected_model} "
+            f"mode={data.get('mode')!r} "
+            f"mission_steps={len(data.get('mission', [])) if isinstance(data.get('mission'), list) else 'invalid'}"
+        )
+        return data
+
+    data = call_router(model)
+    mode = data.get("mode")
+    mission = data.get("mission")
+    response = data.get("response")
+
+    if (
+        mode not in {"reply", "mission"}
+        or not isinstance(mission, list)
+        or not isinstance(response, str)
+    ):
+        # The tiny operator is fast, but structured planning gets one stronger
+        # retry when its output is incomplete. No hard-coded command mapping.
+        info("Operator JSON incomplete; retrying with the fast resident brain.")
+        data = call_router(FAST_MODEL)
+        model = FAST_MODEL
+
+    return data, model
 
 
 def _execute_mission(
@@ -151,9 +200,13 @@ def handle_prompt(prompt: str) -> str:
                     model=MID_MODEL,
                     max_output_tokens=96,
                     num_ctx=768,
-                    response_format="json",
+                    response_format=_OPERATOR_SCHEMA,
                 )
                 repaired_data = _extract_json(repaired)
+                info(
+                    f"Operator repair JSON: mode={repaired_data.get('mode')!r} "
+                    f"mission_steps={len(repaired_data.get('mission', [])) if isinstance(repaired_data.get('mission'), list) else 'invalid'}"
+                )
                 repaired_mission = repaired_data.get("mission", [])
                 if isinstance(repaired_mission, list) and repaired_mission:
                     mission = repaired_mission
