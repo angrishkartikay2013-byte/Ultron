@@ -211,8 +211,7 @@ def handle_prompt(prompt: str) -> str:
                     "role": "user",
                     "content": (
                         prompt
-                        + "
-Repair the failed mission. Tool error: "
+                        + "\nRepair the failed mission. Tool error: "
                         + str(failed.get("error", "unknown error"))
                     ),
                 }]
