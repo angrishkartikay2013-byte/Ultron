@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from brain.agent import stream_prompt
 from brain.llm import resident_model_for, warm_model
 from brain.router import MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION_MODEL, route_prompt
+from debug import info, exception, log_path
 
 
 VK_Y = 0x59
@@ -119,13 +120,18 @@ class VoiceWorker(QThread):
 
     def run(self) -> None:
         try:
+            info("Voice worker started listening")
             from voice import listen_once
             text = listen_once(stop_event=self.stop_event)
+            info(f"Voice worker heard: {text!r}")
             if text and not self.stop_event.is_set():
                 self.heard.emit(text)
         except Exception as exc:
             if not self.stop_event.is_set():
-                self.failed.emit(str(exc))
+                exception("Voice worker failed")
+                self.failed.emit(
+                    f"{exc} • debug: {log_path()}"
+                )
 
 
 class ReplyWorker(QThread):
@@ -139,13 +145,17 @@ class ReplyWorker(QThread):
 
     def run(self) -> None:
         try:
+            info(f"Reply worker started: {self.prompt!r}")
             parts: list[str] = []
             for token in stream_prompt(self.prompt):
                 parts.append(token)
                 self.chunk.emit(token)
-            self.ready.emit("".join(parts).strip())
+            final = "".join(parts).strip()
+            info(f"Reply worker completed: {final[:200]!r}")
+            self.ready.emit(final)
         except Exception as exc:
-            self.failed.emit(str(exc))
+            exception("Reply worker failed")
+            self.failed.emit(f"{exc} • debug: {log_path()}")
 
 
 class SpeechWorker(QThread):
@@ -484,9 +494,15 @@ class GenesisOrb(QWidget):
         except Exception:
             actual_model = route.model
 
-        self.set_display("Thinking…")
+        self.set_display(
+            f"Heard: {prompt}\n\nInterpreting…"
+        )
         self.set_activity(
-            f"Route: {route.agent.upper()} • {actual_model}"
+            f"Stage: interpreting → {route.agent.upper()} • {actual_model}"
+        )
+        info(
+            f"Prompt received: {prompt!r} | route={route.agent} | "
+            f"requested_model={route.model} | resident_model={actual_model}"
         )
 
         if self.reply and self.reply.isRunning():
@@ -538,11 +554,13 @@ class GenesisOrb(QWidget):
 
 
     def speech_started(self) -> None:
+        info("TTS playback started")
         self.set_state("speaking")
-        self.set_activity("Speaking the completed response • Ctrl+Y interrupts")
+        self.set_activity("Stage: speaking conclusion • Ctrl+Y interrupts")
 
 
     def speech_finished(self) -> None:
+        info("TTS playback finished")
         self._speech_finished = True
         _ULTRON_BUSY.clear()
         mark_activity()
@@ -557,6 +575,7 @@ class GenesisOrb(QWidget):
             QTimer.singleShot(1500, self.listen)
 
     def interrupt(self) -> None:
+        info("Founder interrupted ULTRON")
         _ULTRON_BUSY.clear()
         mark_activity()
         self._click_timer.stop()
@@ -582,11 +601,15 @@ class GenesisOrb(QWidget):
         self.voice = None
 
     def voice_error(self, message: str) -> None:
+        exception(f"Microphone/voice error surfaced: {message}")
         self.set_state("error")
-        self.set_display("Microphone error")
-        self.set_activity(message)
+        self.set_display("Voice error")
+        self.set_activity(
+            f"{message}\nDebug log: {log_path()}"
+        )
 
     def reply_error(self, message: str) -> None:
+        exception(f"Brain error surfaced: {message}")
         _ULTRON_BUSY.clear()
         mark_activity()
         self._generation_finished = True
@@ -597,7 +620,9 @@ class GenesisOrb(QWidget):
             self.speech = None
         self.set_state("error")
         self.set_display("Brain error")
-        self.set_activity(message)
+        self.set_activity(
+            f"{message}\nDebug log: {log_path()}"
+        )
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
