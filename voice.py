@@ -6,24 +6,27 @@ import queue
 import re
 import threading
 import time
+import urllib.request
 import wave
 from collections import deque
 from pathlib import Path
 
 import numpy as np
+import onnxruntime as ort
 import sounddevice as sd
-from pywhispercpp.model import Model
+from faster_whisper import WhisperModel
 from piper import PiperVoice
 
-from debug import info, warning, exception, log_path
+from debug import info, warning, exception
 
 ROOT = Path(__file__).resolve().parent
-WHISPER_DATA_DIR = ROOT / "voice_models" / "whispercpp_data"
-WHISPER_MODELS_DIR = WHISPER_DATA_DIR / "models"
-
-os.environ.setdefault("XDG_DATA_HOME", str(WHISPER_DATA_DIR))
-
-# tiny.en is substantially lighter than base.en and is better suited to the i7-4770T.
+WHISPER_DATA_DIR = ROOT / "voice_models" / "faster_whisper"
+VAD_DATA_DIR = ROOT / "voice_models" / "silero_vad"
+VAD_MODEL_PATH = VAD_DATA_DIR / "silero_vad.onnx"
+VAD_MODEL_URL = (
+    "https://raw.githubusercontent.com/snakers4/silero-vad/master/"
+    "src/silero_vad/data/silero_vad.onnx"
+)
 WHISPER_MODEL_NAME = os.getenv("ULTRON_STT_MODEL", "base.en")
 WHISPER_THREADS = max(2, min(4, os.cpu_count() or 4))
 PIPER_MODEL = ROOT / "voice_models" / "piper" / "en_US-ryan-high.onnx"
@@ -35,45 +38,106 @@ if not PIPER_MODEL.exists():
         f"Piper voice not found at {PIPER_MODEL}. Run: uv run scripts/setup_piper_voice.py"
     )
 
-WHISPER_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-stt_model: Model | None = None
+WHISPER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+VAD_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+stt_model: WhisperModel | None = None
+vad_model: "SileroOnnxVAD" | None = None
 speech_model: PiperVoice | None = None
 audio_queue: queue.Queue[np.ndarray] = queue.Queue()
 _speech_lock = threading.Lock()
 
 
+class SileroOnnxVAD:
+    """Small streaming wrapper around the official Silero VAD ONNX model."""
+
+    def __init__(self, model_path: Path) -> None:
+        opts = ort.SessionOptions()
+        opts.inter_op_num_threads = 1
+        opts.intra_op_num_threads = 1
+        self.session = ort.InferenceSession(
+            str(model_path),
+            providers=["CPUExecutionProvider"],
+            sess_options=opts,
+        )
+        self.reset()
+
+    def reset(self) -> None:
+        self.state = np.zeros((2, 1, 128), dtype=np.float32)
+        self.context = np.zeros((1, 64), dtype=np.float32)
+        self.last_batch_size = 1
+
+    def probability(self, chunk: np.ndarray) -> float:
+        audio = np.asarray(chunk, dtype=np.float32)
+        if audio.shape[0] != 512:
+            raise ValueError(f"Silero VAD expects 512 samples, got {audio.shape[0]}")
+
+        x = audio.reshape(1, -1)
+        x = np.concatenate([self.context, x], axis=1)
+
+        outputs = self.session.run(
+            None,
+            {
+                "input": x,
+                "state": self.state,
+                "sr": np.array(16000, dtype=np.int64),
+            },
+        )
+        output, self.state = outputs
+        self.context = x[:, -64:]
+        return float(np.asarray(output).reshape(-1)[0])
+
+
+def _ensure_vad_model() -> None:
+    if VAD_MODEL_PATH.exists() and VAD_MODEL_PATH.stat().st_size > 100_000:
+        return
+
+    info("Silero VAD model not found; downloading official ONNX model.")
+    VAD_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = VAD_MODEL_PATH.with_suffix(".download")
+    try:
+        urllib.request.urlretrieve(VAD_MODEL_URL, tmp)
+        if tmp.stat().st_size < 100_000:
+            raise RuntimeError("Downloaded Silero VAD model looks incomplete.")
+        tmp.replace(VAD_MODEL_PATH)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
 def load_voice_models() -> tuple[str, str]:
-    """Load Whisper and Piper exactly once, on demand."""
-    global stt_model, speech_model
+    """Load STT, VAD, and Piper exactly once, on demand."""
+    global stt_model, vad_model, speech_model
+
+    if vad_model is None:
+        _ensure_vad_model()
+        info("Loading Silero VAD ONNX")
+        vad_model = SileroOnnxVAD(VAD_MODEL_PATH)
 
     if stt_model is None:
-        info(f"Loading Whisper model {WHISPER_MODEL_NAME!r}")
-        stt_model = Model(
-            WHISPER_MODEL_NAME,
-            models_dir=str(WHISPER_MODELS_DIR),
-            params_sampling_strategy=1,
-            print_progress=False,
-            print_realtime=False,
-            n_threads=WHISPER_THREADS,
+        info(
+            f"Loading faster-whisper {WHISPER_MODEL_NAME!r} "
+            f"(CPU INT8, threads={WHISPER_THREADS})"
         )
-        try:
-            stt_model._params.beam_search["beam_size"] = 5
-            stt_model._params.beam_search["patience"] = 1.0
-            stt_model._params.temperature = 0.0
-            stt_model._params.no_speech_thold = 0.60
-        except Exception:
-            warning("Could not customize Whisper decoder parameters; using library defaults.")
-        else:
-            info(
-                "Whisper decoder: beam_search beam_size=5, "
-                "temperature=0, no_speech_thold=0.60"
-            )
+        stt_model = WhisperModel(
+            WHISPER_MODEL_NAME,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=WHISPER_THREADS,
+            num_workers=1,
+            download_root=str(WHISPER_DATA_DIR),
+        )
 
     if speech_model is None:
         info(f"Loading Piper voice {PIPER_MODEL.name!r}")
         speech_model = PiperVoice.load(str(PIPER_MODEL))
 
-    info(f"Voice models ready: Whisper={WHISPER_MODEL_NAME}, Piper={PIPER_MODEL.name}")
+    info(
+        f"Voice models ready: STT={WHISPER_MODEL_NAME}, "
+        f"VAD=Silero-ONNX, Piper={PIPER_MODEL.name}"
+    )
     return WHISPER_MODEL_NAME, PIPER_MODEL.name
 
 
@@ -127,16 +191,14 @@ def choose_microphone() -> int:
             return selected
 
 
-def _write_wav(samples: np.ndarray, noise_floor: float = 0.0) -> Path:
+def _write_wav(samples: np.ndarray) -> Path:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     samples = np.asarray(samples, dtype=np.float32)
     samples = samples - float(np.mean(samples))
 
-    # Preserve speech shape. Only boost genuinely quiet recordings instead of
-    # applying a hard gate that can distort consonants and word endings.
     rms = float(np.sqrt(np.mean(np.square(samples))) + 1e-9)
-    if rms < 0.055:
-        gain = min(5.0, 0.055 / rms)
+    if rms < 0.045:
+        gain = min(4.0, 0.045 / rms)
         samples = samples * gain
 
     path = TEMP_DIR / f"utterance_{int(time.time() * 1000)}.wav"
@@ -153,38 +215,36 @@ def _transcribe(path: Path) -> str:
     if stt_model is None:
         load_voice_models()
 
-    segments = stt_model.transcribe(
+    segments, meta = stt_model.transcribe(
         str(path),
         language="en",
-        print_progress=False,
-        print_realtime=False,
-        no_context=True,
-        suppress_blank=True,
-        suppress_non_speech_tokens=True,
+        beam_size=5,
+        best_of=5,
         temperature=0.0,
-        no_speech_thold=0.55,
+        condition_on_previous_text=False,
+        vad_filter=False,
+        no_speech_threshold=0.60,
+        compression_ratio_threshold=2.4,
+        log_prob_threshold=-1.0,
     )
-    parts = []
+
+    parts: list[str] = []
     for segment in segments:
-        text = getattr(segment, "text", str(segment)).strip()
+        text = segment.text.strip()
         if text:
             parts.append(text)
+
     transcript = re.sub(r"\s+", " ", " ".join(parts)).strip()
     if transcript.casefold() in {"[blank_audio]", "[blank audio]", "(blank audio)"}:
-        info("Whisper produced a blank-audio marker; discarding it.")
+        info("STT produced a blank-audio marker; discarding it.")
         return ""
+
+    if not transcript:
+        info(
+            "STT produced an empty transcript "
+            f"(language={getattr(meta, 'language', 'unknown')!r})"
+        )
     return transcript
-
-
-def _noise_floor(chunks: list[np.ndarray]) -> float:
-    if not chunks:
-        return 0.005
-
-    rms_values = [
-        float(np.sqrt(np.mean(np.square(chunk))) + 1e-9)
-        for chunk in chunks
-    ]
-    return float(np.median(rms_values))
 
 
 def listen_once(
@@ -201,55 +261,42 @@ def listen_once(
         except queue.Empty:
             break
 
-    sample_rate = 16000
-    silence_seconds = 0.85
-    max_seconds = 8.0
+    load_voice_models()
+    assert vad_model is not None
 
-    # Learn the room tone first so constant fan/AC/PC noise does not trigger
-    # the microphone gate.
-    calibration_seconds = 0.22
-    calibration_samples = int(calibration_seconds * sample_rate)
-    calibration_chunks: list[np.ndarray] = []
-    calibration_total = 0
+    sample_rate = 16000
+    block_size = 512
+    max_seconds = 10.0
+    min_voice_seconds = 0.12
+    silence_seconds = 0.55
+    onset_threshold = 0.55
+    release_threshold = 0.32
+    pre_roll_blocks = 8
 
     started = False
+    quiet_blocks = 0
+    voiced_blocks = 0
     silence_started: float | None = None
     chunks: list[np.ndarray] = []
-    pre_roll: deque[np.ndarray] = deque(maxlen=6)
+    pre_roll: deque[np.ndarray] = deque(maxlen=pre_roll_blocks)
     total_samples = 0
-    voiced_chunks = 0
 
-    info(f"Microphone capture starting on device {selected}")
+    vad_model.reset()
+
+    info(
+        f"Microphone capture starting on device {selected} "
+        f"(Silero threshold={onset_threshold:.2f}, release={release_threshold:.2f})"
+    )
+
     with sd.InputStream(
         samplerate=sample_rate,
-        blocksize=1024,
+        blocksize=block_size,
         channels=1,
         dtype="float32",
         callback=_callback,
         device=selected,
         latency="low",
     ):
-        while calibration_total < calibration_samples:
-            if stop_event and stop_event.is_set():
-                return ""
-            try:
-                chunk = audio_queue.get(timeout=0.12)
-            except queue.Empty:
-                continue
-            calibration_chunks.append(chunk)
-            calibration_total += len(chunk)
-
-        floor = _noise_floor(calibration_chunks)
-        info(
-            f"Mic calibration complete: device={selected}, "
-            f"noise_floor={floor:.6f}"
-        )
-
-        # Speech must rise well above the measured room floor.
-        # The lower release threshold avoids chopping quiet words.
-        onset_threshold = max(0.0010, floor * 1.60)
-        release_threshold = max(0.00065, floor * 1.18)
-
         while True:
             if stop_event and stop_event.is_set():
                 return ""
@@ -259,22 +306,23 @@ def listen_once(
             except queue.Empty:
                 continue
 
-            rms = float(np.sqrt(np.mean(np.square(chunk))) + 1e-9)
+            probability = vad_model.probability(chunk)
             now = time.monotonic()
 
             if not started:
                 pre_roll.append(chunk)
 
-                # Require a brief sustained voice onset instead of one noisy
-                # microphone block.
-                if rms >= onset_threshold:
-                    voiced_chunks += 1
+                if probability >= onset_threshold:
+                    voiced_blocks += 1
                 else:
-                    voiced_chunks = 0
+                    voiced_blocks = 0
 
-                if voiced_chunks >= 2:
+                if voiced_blocks >= max(2, int(min_voice_seconds / 0.032)):
                     started = True
-                    info(f"Voice onset detected: rms={rms:.6f}, threshold={onset_threshold:.6f}")
+                    silence_started = None
+                    info(
+                        f"Voice onset detected: vad_probability={probability:.3f}"
+                    )
                     chunks.extend(list(pre_roll))
                     total_samples += sum(len(item) for item in pre_roll)
                 continue
@@ -282,34 +330,43 @@ def listen_once(
             chunks.append(chunk)
             total_samples += len(chunk)
 
-            if rms < release_threshold:
+            if probability < release_threshold:
+                quiet_blocks += 1
                 if silence_started is None:
                     silence_started = now
                 elif now - silence_started >= silence_seconds:
+                    info(
+                        f"Voice end detected: vad_probability={probability:.3f}, "
+                        f"duration={total_samples / sample_rate:.2f}s"
+                    )
                     break
             else:
+                quiet_blocks = 0
                 silence_started = None
 
             if total_samples >= int(max_seconds * sample_rate):
                 info("Voice capture reached maximum utterance duration.")
                 break
 
-    if not chunks:
+    minimum_samples = int(0.18 * sample_rate)
+    if not chunks or total_samples < minimum_samples:
+        info("Discarding capture that was too short to be useful.")
         return ""
 
-    path = _write_wav(np.concatenate(chunks), noise_floor=floor)
+    path = _write_wav(np.concatenate(chunks))
     try:
         transcript = _transcribe(path)
-        info(f"Whisper transcript: {transcript!r}")
+        info(f"STT transcript: {transcript!r}")
         return transcript
     except Exception:
-        exception("Whisper transcription failed")
+        exception("Speech transcription failed")
         raise
     finally:
         try:
             path.unlink()
         except OSError:
             pass
+
 
 def _speech_chunks(text: str) -> list[str]:
     clean = re.sub(chr(96) * 3 + r".*?" + chr(96) * 3, " ", text, flags=re.S)
@@ -408,8 +465,6 @@ def speak_streaming(
                     if stop_event.is_set():
                         break
 
-            # Leave a short real-audio tail in the device buffer so the final
-            # phoneme is fully rendered before the output stream is closed.
             if not stop_event.is_set():
                 tail_samples = max(1, int(speech_model.config.sample_rate * 0.12))
                 stream.write(b"\x00\x00" * tail_samples)
