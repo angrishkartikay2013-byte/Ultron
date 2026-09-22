@@ -274,9 +274,11 @@ def stream_prompt(prompt: str) -> Iterator[str]:
             parts.append(token)
             yield token
     except Exception:
-        fallback = handle_prompt(prompt)
-        yield fallback
-        return
+        # Do not immediately run a second full model call: that doubles
+        # latency after a transient streaming failure.
+        if parts:
+            return
+        raise
 
     final = "".join(parts).strip()
     if final:
