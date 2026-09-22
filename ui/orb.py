@@ -73,7 +73,10 @@ class StartupWorker(QThread):
             mark_activity()
             self.ready.emit()
         except Exception as exc:
-            self.failed.emit(f"Micro startup failed: {exc}")
+            exception("Micro-brain startup failed")
+            self.failed.emit(
+                f"Micro startup failed: {exc} • debug: {log_path()}"
+            )
             return
 
         # Richer brains and voice warm only after the orb is already usable.
@@ -95,7 +98,10 @@ class StartupWorker(QThread):
                 else:
                     self.status.emit(f"Background: {label} online")
             except Exception as exc:
-                self.status.emit(f"Background: {label} skipped • {exc}")
+                exception(f"Background startup failed: {label}")
+                self.status.emit(
+                    f"Background: {label} skipped • {exc} • debug: {log_path()}"
+                )
 
         self.status.emit("Background: larger brains remain on-demand.")
         self.finished_background.emit()
@@ -521,8 +527,11 @@ class GenesisOrb(QWidget):
 
     def reply_chunk(self, token: str) -> None:
         self._response_text += token
-        self.set_display(self._response_text)
-        self.set_activity("Writing response…")
+        self.set_display(
+            f"Heard: {self._active_prompt}\n\nInterpreting…\n\n"
+            f"ULTRON: {self._response_text}"
+        )
+        self.set_activity("Stage: interpreting → generating response")
         self.update()
 
 
@@ -531,8 +540,11 @@ class GenesisOrb(QWidget):
         final_text = text.strip() or self._response_text.strip()
 
         if final_text:
-            self.set_display(final_text)
-            self.set_activity("Response written • preparing voice…")
+            self.set_display(
+                f"Heard: {self._active_prompt}\n\n"
+                f"Conclusion:\n{final_text}"
+            )
+            self.set_activity("Stage: conclusion reached • preparing voice…")
             self._start_speech(final_text)
             return
 
