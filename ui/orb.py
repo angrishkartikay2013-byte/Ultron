@@ -297,7 +297,7 @@ class GenesisOrb(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFixedSize(380, 225)
+        self.setFixedSize(380, 250)
         self.setWindowFlags(
             Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
@@ -323,7 +323,7 @@ class GenesisOrb(QWidget):
         self._last_mouse_pos = QPoint()
 
         self.caption = QLabel("", self)
-        self.caption.setGeometry(24, 139, 332, 45)
+        self.caption.setGeometry(24, 128, 332, 78)
         self.caption.setAlignment(Qt.AlignCenter)
         self.caption.setWordWrap(True)
         self.caption.setTextInteractionFlags(Qt.NoTextInteraction)
@@ -334,7 +334,7 @@ class GenesisOrb(QWidget):
         )
 
         self.activity_label = QLabel("", self)
-        self.activity_label.setGeometry(34, 186, 312, 28)
+        self.activity_label.setGeometry(34, 209, 312, 30)
         self.activity_label.setAlignment(Qt.AlignCenter)
         self.activity_label.setWordWrap(True)
         self.activity_label.setTextInteractionFlags(Qt.NoTextInteraction)
@@ -368,12 +368,12 @@ class GenesisOrb(QWidget):
         self.caption.setText(text.strip())
         self.caption.adjustSize()
         # Keep the response area tied to the orb instead of spawning a chat window.
-        self.caption.setGeometry(24, 139, 332, 45)
+        self.caption.setGeometry(24, 128, 332, 78)
 
     def set_activity(self, text: str) -> None:
         self.activity_label.setText(text.strip())
         self.activity_label.adjustSize()
-        self.activity_label.setGeometry(34, 186, 312, 28)
+        self.activity_label.setGeometry(34, 209, 312, 30)
         if self.popup is not None and self.popup.isVisible():
             self.popup.set_activity(text)
 
