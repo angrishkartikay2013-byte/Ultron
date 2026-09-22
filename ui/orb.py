@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from brain.agent import stream_prompt
 from brain.llm import warm_model
-from brain.router import AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION_MODEL, route_prompt
+from brain.router import MICRO_MODEL, AGENT_MODEL, FAST_MODEL, MID_MODEL, HEAVY_MODEL, VISION_MODEL, route_prompt
 
 
 VK_Y = 0x59
@@ -66,6 +66,10 @@ class StartupWorker(QThread):
     def run(self) -> None:
         # Phase 1: make the smallest useful brain live as fast as possible.
         try:
+            self.status.emit("Starting micro-brain…")
+            micro = warm_model(MICRO_MODEL)
+            self.status.emit(f"Micro online • {micro}")
+
             self.status.emit("Starting reflex brain…")
             reflex = warm_model(AGENT_MODEL)
             self.status.emit(f"Reflex online • {reflex}")
