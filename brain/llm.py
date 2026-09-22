@@ -215,7 +215,7 @@ def _effective_limits(
 ) -> tuple[int, int]:
     limits = {
         MICRO_MODEL: (24, 128),
-        AGENT_MODEL: (32, 256),
+        AGENT_MODEL: (32, 768),
         FAST_MODEL: (96, 768),
         MID_MODEL: (128, 1024),
         HEAVY_MODEL: (192, 2048),
