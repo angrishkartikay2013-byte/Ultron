@@ -299,12 +299,11 @@ def vision_chat(
         "think": False,
         "keep_alive": "5m",
         "options": _payload_options(
-                selected_model,
-                *_effective_limits(selected_model, max_output_tokens, 768),
-            ),
-        },
-        timeout=timeout,
-    )
+            selected_model,
+            *_effective_limits(selected_model, max_output_tokens, 768),
+        ),
+    }
+
     if response_format:
         payload["format"] = response_format
 
