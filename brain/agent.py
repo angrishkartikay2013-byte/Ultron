@@ -6,7 +6,7 @@ from typing import Any, Iterator
 
 from .cache import response_cache
 from .core import history, _save
-from .llm import chat, stream_chat
+from .llm import chat, stream_chat, resident_models, warm_model
 from .router import AGENT_MODEL, FAST_MODEL, MID_MODEL, route_prompt
 from debug import info
 from tools.executor import execute
@@ -123,8 +123,12 @@ def _run_router(
         data = None
 
     if data is None:
-        # Retry with a stronger resident language model; no command mapping.
+        # Retry with a stronger model. If the fast brain is not resident yet,
+        # warm it only after the tiny operator has actually failed.
         info("Operator retry: switching to the fast resident brain.")
+        if FAST_MODEL not in resident_models(refresh=True):
+            info("Fast brain is not resident; warming it for operator retry.")
+            warm_model(FAST_MODEL)
         data = call_router(FAST_MODEL)
         model = FAST_MODEL
 
