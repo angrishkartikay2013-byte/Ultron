@@ -7,7 +7,11 @@ from pathlib import Path
 
 TOOL = {
     "name": "create_tool",
-    "description": "Create a Python tool under tools/generated, validate its syntax, and optionally enable it.",
+    "description": (
+        "Stage a new Python tool under tools/generated after syntax validation. "
+        "Generated tools are never enabled automatically; enabling remains a "
+        "separate approval step."
+    ),
 }
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +41,6 @@ def run(
     name: str,
     code: str,
     description: str = "Generated ULTRON tool",
-    enabled: bool = False,
 ) -> str:
     tool_name = _safe_name(name)
     if len(code) > 40_000:
@@ -51,12 +54,12 @@ def run(
     wrapped = (
         "from __future__ import annotations\n\n"
         f"TOOL = {{'name': {tool_name!r}, 'description': {description!r}}}\n"
-        f"ENABLED = {bool(enabled)!r}\n\n"
+        "ENABLED = False\n"
+        "WORKSHOP_STATUS = 'staged'\n\n"
         f"{code.rstrip()}\n"
     )
 
     compile(wrapped, str(path), "exec")
     path.write_text(wrapped, encoding="utf-8")
 
-    state = "enabled" if enabled else "staged"
-    return f"Created {tool_name}.py ({state}) at {path}"
+    return f"Staged {tool_name}.py for Tool Workshop approval at {path}"
