@@ -22,3 +22,5 @@ The separate angrishkartikay2013-byte/llm repository remains the custom C++ LLM 
 | Windows AgentOS / desktop automation | https://github.com/microsoft/UFO | **Integration/reference** — Windows UI Automation, Win32/WinCOM, hybrid GUI/API execution, and multi-application workflows. |
 
 | Multi-agent orchestration | https://github.com/microsoft/agent-framework | **Optional/reference** — current Microsoft framework for Python/.NET multi-agent workflows; useful for future C#/.NET shell or specialized agent orchestration. |
+
+| Native C/C++ LLM inference | https://github.com/ggml-org/llama.cpp | **Reference/future** — potential native inference path for the separate C++ ULTRON LLM engine; not vendored into the Python assistant. |
