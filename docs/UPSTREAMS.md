@@ -12,3 +12,5 @@ ULTRON is an integration project; upstream dependencies remain external and are 
 | Desktop automation | https://github.com/asweigart/pyautogui |
 
 The separate angrishkartikay2013-byte/llm repository remains the custom C++ LLM engine. It is intentionally not vendored here.
+
+| Local speech synthesis | https://github.com/OHF-Voice/piper1-gpl | **Core** — current Piper development repository; the former rhasspy/piper repo is archived and points here. |
