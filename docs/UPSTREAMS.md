@@ -23,3 +23,5 @@ The repository angrishkartikay2013-byte/llm is the custom C++ ULTRON LLM engine.
 ## Integration rule
 
 Do not add an upstream project to the runtime dependency set merely because it appears in this document. Each integration must earn its place through a concrete ULTRON feature, compatibility test, and dependency review.
+
+| MCP Python SDK | https://github.com/modelcontextprotocol/python-sdk | **P0 / integration** — standard tool/resource protocol; use this for external tool adapters. |
