@@ -16,3 +16,5 @@ The separate angrishkartikay2013-byte/llm repository remains the custom C++ LLM 
 | Local speech synthesis | https://github.com/OHF-Voice/piper1-gpl | **Core** — current Piper development repository; the former rhasspy/piper repo is archived and points here. |
 
 | Voice activity detection | https://github.com/snakers4/silero-vad | **Core candidate** — robust VAD for hands-free listening; current upstream has v6.2.x releases. |
+
+| Browser automation | https://github.com/browser-use/browser-use | **Integration** — web tasks, browser control, extraction, and MCP/browser tooling. |
