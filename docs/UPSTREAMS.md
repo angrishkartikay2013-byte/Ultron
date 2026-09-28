@@ -27,3 +27,5 @@ Do not add an upstream project to the runtime dependency set merely because it a
 | MCP Python SDK | https://github.com/modelcontextprotocol/python-sdk | **P0 / integration** — standard tool/resource protocol; use this for external tool adapters. |
 
 | MCP reference servers | https://github.com/modelcontextprotocol/servers | **P1 / reference** — filesystem, fetch, memory, git and sequential-thinking examples; reference only, not blindly production-vendored. |
+
+| Windows UI automation | https://github.com/pywinauto/pywinauto | **P0 / integration** — Win32 and Microsoft UI Automation control-level access. |
