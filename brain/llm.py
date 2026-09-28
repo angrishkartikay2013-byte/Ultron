@@ -351,7 +351,7 @@ def chat(
         "model": selected_model,
         "messages": _messages(history, system),
         "stream": False,
-        "think": False,
+        "think": selected_model in {AGENT_MODEL, HEAVY_MODEL},
         "keep_alive": _keep_alive(selected_model),
         "options": _payload_options(
             selected_model,
