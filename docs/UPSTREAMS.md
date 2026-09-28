@@ -29,3 +29,5 @@ Do not add an upstream project to the runtime dependency set merely because it a
 | MCP reference servers | https://github.com/modelcontextprotocol/servers | **P1 / reference** — filesystem, fetch, memory, git and sequential-thinking examples; reference only, not blindly production-vendored. |
 
 | Windows UI automation | https://github.com/pywinauto/pywinauto | **P0 / integration** — Win32 and Microsoft UI Automation control-level access. |
+
+| Browser automation | https://github.com/microsoft/playwright-python | **P0 / integration** — deterministic Chromium/Firefox/WebKit browser control. |
