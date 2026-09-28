@@ -20,3 +20,5 @@ The separate angrishkartikay2013-byte/llm repository remains the custom C++ LLM 
 | Browser automation | https://github.com/browser-use/browser-use | **Integration** — web tasks, browser control, extraction, and MCP/browser tooling. |
 
 | Windows AgentOS / desktop automation | https://github.com/microsoft/UFO | **Integration/reference** — Windows UI Automation, Win32/WinCOM, hybrid GUI/API execution, and multi-application workflows. |
+
+| Multi-agent orchestration | https://github.com/microsoft/agent-framework | **Optional/reference** — current Microsoft framework for Python/.NET multi-agent workflows; useful for future C#/.NET shell or specialized agent orchestration. |
