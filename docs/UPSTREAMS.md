@@ -35,3 +35,5 @@ Do not add an upstream project to the runtime dependency set merely because it a
 | Self-hosted web search | https://github.com/searxng/searxng | **P1 / integration** — HTTP search API for grounded web search. |
 
 | Hugging Face Hub | https://github.com/huggingface/huggingface_hub | **P1 / integration** — model/dataset discovery and downloads. |
+
+| Realtime voice infrastructure | https://github.com/livekit/agents | **P3 / optional** — networked WebRTC voice-agent infrastructure, not required for local V2. |
