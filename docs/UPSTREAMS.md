@@ -31,3 +31,5 @@ Do not add an upstream project to the runtime dependency set merely because it a
 | Windows UI automation | https://github.com/pywinauto/pywinauto | **P0 / integration** — Win32 and Microsoft UI Automation control-level access. |
 
 | Browser automation | https://github.com/microsoft/playwright-python | **P0 / integration** — deterministic Chromium/Firefox/WebKit browser control. |
+
+| Self-hosted web search | https://github.com/searxng/searxng | **P1 / integration** — HTTP search API for grounded web search. |
