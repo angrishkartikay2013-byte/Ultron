@@ -6,7 +6,7 @@ ULTRON GENESIS is a local, voice-first Windows AI assistant designed as an agent
 
 **Voice → Agency Brain → Native Tools → Real Execution Results → Agency Brain → Voice**
 
-The V2 agency loop uses Ollama's native function/tool-calling API. Ollama documents tool calling through the `tools` field and tool result messages; its current Python examples also support multiple tool calls in a loop. citeturn634583search0turn634583search2turn634583search7
+The V2 agency loop uses Ollama's native function/tool-calling API. Ollama documents tool calling through the `tools` field and tool result messages; its current Python examples also support multiple tool calls in a loop. See the official Ollama tool-calling documentation and examples at https://ollama.com/blog/tool-support and https://github.com/ollama/ollama-python/blob/main/examples/tools.py.
 
 ### Brain regions
 
@@ -45,7 +45,7 @@ From the repository root:
 
 ## Model setup
 
-Set `ULTRON_AGENT_MODEL` to test another compatible Ollama model. Llama 3.1 is also supported by Ollama's documented tool-calling interface. citeturn634583search0
+Set `ULTRON_AGENT_MODEL` to test another compatible Ollama model. Llama 3.1 is also supported by Ollama's documented tool-calling interface. See https://ollama.com/blog/tool-support.
 
 ## Repository strategy
 
