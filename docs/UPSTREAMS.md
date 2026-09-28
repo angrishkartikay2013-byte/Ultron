@@ -18,3 +18,5 @@ The separate angrishkartikay2013-byte/llm repository remains the custom C++ LLM 
 | Voice activity detection | https://github.com/snakers4/silero-vad | **Core candidate** — robust VAD for hands-free listening; current upstream has v6.2.x releases. |
 
 | Browser automation | https://github.com/browser-use/browser-use | **Integration** — web tasks, browser control, extraction, and MCP/browser tooling. |
+
+| Windows AgentOS / desktop automation | https://github.com/microsoft/UFO | **Integration/reference** — Windows UI Automation, Win32/WinCOM, hybrid GUI/API execution, and multi-application workflows. |
