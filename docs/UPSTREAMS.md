@@ -37,3 +37,5 @@ Do not add an upstream project to the runtime dependency set merely because it a
 | Hugging Face Hub | https://github.com/huggingface/huggingface_hub | **P1 / integration** — model/dataset discovery and downloads. |
 
 | Realtime voice infrastructure | https://github.com/livekit/agents | **P3 / optional** — networked WebRTC voice-agent infrastructure, not required for local V2. |
+
+| Typed agent framework | https://github.com/pydantic/pydantic-ai | **P2 / optional** — alternative typed agent loop; evaluate before adopting. |
