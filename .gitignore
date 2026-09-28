@@ -1,6 +1,4 @@
-# =========================
 # ULTRON GENESIS
-# =========================
 
 # Python
 .venv/
@@ -9,16 +7,20 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# AI Models
+# AI models and model caches
 models/
 voice_models/
+voice_models/**
 
-# Memory (generated at runtime)
+# Runtime memory and recordings
 memory/*.json
-
-# VS Code
-.vscode/
-
-# Logs
+memory/voice_temp/
+memory/**/*.wav
+screenshots/
+tmp/
 *.log
 *.tmp
+
+# Development
+.vscode/
+.idea/
