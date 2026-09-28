@@ -88,7 +88,7 @@ class StartupWorker(QThread):
 
         # Richer brains and voice warm only after the orb is already usable.
         background_tasks = [
-            ("operator brain", lambda: warm_model(AGENT_MODEL)),
+            ("agency brain", lambda: warm_model(AGENT_MODEL)),
             ("conversation brain", lambda: warm_model(FAST_MODEL)),
             ("voice engine", self._warm_voice),
         ]
