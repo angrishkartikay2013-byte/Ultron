@@ -425,3 +425,51 @@ def stream_chat(
                 yield token
     finally:
         response.close()
+
+
+def chat_raw(
+    messages: list[dict[str, Any]],
+    *,
+    model: str | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    timeout: int = 120,
+    system_extra: str = "",
+    max_output_tokens: int = 256,
+    num_ctx: int = 2048,
+) -> dict[str, Any]:
+    """Call Ollama's native chat API and preserve tool_calls in the response."""
+    selected_model = choose_ready_model(model or FAST_MODEL)
+    effective_output, effective_ctx = _effective_limits(
+        selected_model,
+        max_output_tokens,
+        num_ctx,
+    )
+
+    system = SYSTEM_PROMPT
+    if system_extra.strip():
+        system += "\n\n" + system_extra.strip()
+
+    payload: dict[str, Any] = {
+        "model": selected_model,
+        "messages": _messages(messages, system),
+        "stream": False,
+        "think": False,
+        "keep_alive": _keep_alive(selected_model),
+        "options": _payload_options(
+            selected_model,
+            effective_output,
+            effective_ctx,
+            structured=False,
+        ),
+    }
+    if tools:
+        payload["tools"] = tools
+
+    response = _SESSION.post(URL, json=payload, timeout=timeout)
+    response.raise_for_status()
+
+    body = response.json()
+    message = body.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("Ollama returned an invalid chat message.")
+    return message
