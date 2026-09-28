@@ -1,0 +1,19 @@
+name: ULTRON V2 sanity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q .
