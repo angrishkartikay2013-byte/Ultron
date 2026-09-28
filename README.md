@@ -1,47 +1,69 @@
 # ULTRON GENESIS
 
-ULTRON is a local Windows AI desktop assistant built around Ollama, Qwen models, Vosk, PySide6 and a dynamic desktop tool system.
+ULTRON GENESIS is a local, voice-first Windows AI assistant designed as an agent system rather than a chatbot wrapped in a UI.
 
-## Current system
+## V2 architecture
 
-- Floating holographic orb
-- Glass command popup
-- Fast reflex responses for basic conversation
-- Fast local model routing with a Qwen2.5 3B first stage
-- Qwen3 8B escalation for heavier reasoning and failed missions
-- Persistent conversation memory
-- Dynamic tool registry with exact argument signatures
-- Desktop mission execution
-- App launching, typing, mouse movement, clicking, hotkeys, key presses, scrolling and screenshots
-- Interruptible offline SAPI5 speech
-- Automatic microphone gain for quiet speech
-- Optional Indian-English Vosk model support
-- Interactive 3D-style Memory Galaxy with orbit, zoom and node selection
+**Voice → Agency Brain → Native Tools → Real Execution Results → Agency Brain → Voice**
+
+The V2 agency loop uses Ollama's native function/tool-calling API. Ollama documents tool calling through the `tools` field and tool result messages; its current Python examples also support multiple tool calls in a loop. citeturn634583search0turn634583search2turn634583search7
+
+### Brain regions
+
+- **Agency Cortex:** Qwen3 8B by default. Interprets requests, chooses tools, sequences missions and decides when the task is complete.
+- **Conversation Cortex:** Qwen2.5 3B remains available for lightweight voice/UI work.
+- **Vision Cortex:** Qwen2.5VL 3B reads the current screen through the existing `screen_vision` tool.
+- **Voice Cortex:** Moonshine Voice handles live microphone transcription; Piper handles spoken output.
+- **Memory Cortex:** conversation history plus durable memory tools and the Memory Galaxy UI.
+- **Tool Workshop:** the dynamic registry can discover normal tools and staged generated tools.
+
+## V2 feature set
+
+- Voice-first continuous interaction
+- Natural language without hard-coded command phrases
+- Native Ollama tool calling
+- Dynamic tool discovery from real Python signatures
+- Multi-step tool execution with grounded feedback
+- Windows app launching, typing, mouse, hotkeys, scrolling and screenshots
+- Visual screen inspection and coordinate-based visual interaction
+- Durable memory storage and recall
+- Memory Galaxy visualization
+- Tool Workshop for syntax-checked generated tools
+- Ctrl+Y interruption
+- Floating orb HUD with heard/interpreting/conclusion states
+- Local-first model and voice assets
 
 ## Run
 
 From the repository root:
 
-```powershell
-uv sync
-uv run diagnostics.py
-uv run genesis.py
-```
+`uv sync`
 
-### Better Indian-English recognition
+`uv run diagnostics.py`
 
-The project can use Vosk's `vosk-model-small-en-in-0.4` when it exists under `voice_models/`. Install it with:
+`uv run genesis.py`
 
-```powershell
-uv run scripts/setup_indian_voice.py
-```
+## Model setup
 
-The official Vosk model list describes that model as a lightweight Indian-English model, while the current US-English model is a lightweight generic English model. citeturn934909search0turn857853view0
+Set `ULTRON_AGENT_MODEL` to test another compatible Ollama model. Llama 3.1 is also supported by Ollama's documented tool-calling interface. citeturn634583search0
 
-### Model pipeline
+## Repository strategy
 
-GENESIS warms the fast model while the orb starts. Normal conversation and simple actions use the fast model; heavy tasks can switch to Qwen3 8B. The heavy model is not loaded for every simple interaction.
+The assistant remains in this repository. The separate `llm` repository is reserved for the custom C++ LLM engine.
 
-## Development direction
+## V2 completion criteria
 
-The next major layers are a richer mission HUD, persistent project vaults, true graph search/navigation, Tool Workshop approvals, Sentinel security monitoring, and deeper 3D presentation.
+ULTRON V2 is considered feature-complete in the source tree when the following are present and integrated:
+
+1. Native tool calling
+2. Dynamic tool registry
+3. Real tool execution feedback
+4. Voice/STT/TTS lifecycle
+5. Screen vision tool
+6. Durable memory and Memory Galaxy
+7. Tool Workshop
+8. Interruptible orb UI
+9. Clean runtime ignore rules
+10. Local setup and diagnostics documentation
+
+Local hardware validation is still required on the target Windows machine after pulling the release commit.
