@@ -1,0 +1,306 @@
+{
+  "project": {
+    "name": "ULTRON GENESIS",
+    "version": "3.0.0-ecosystem",
+    "master_repository": "angrishkartikay2013-byte/Ultron",
+    "external_root": "E:\\Titan\\repos",
+    "environment_root": "E:\\Titan\\envs",
+    "policy": "Keep upstream projects external and isolated. Do not vendor large frameworks or model weights into the ULTRON source tree."
+  },
+  "components": [
+    {
+      "id": "ollama",
+      "repo": "ollama/ollama",
+      "path": "ollama",
+      "tier": "core",
+      "role": "Local LLM runtime and native tool calling",
+      "runtime": "local-service",
+      "install": false,
+      "status": "integrated-in-core"
+    },
+    {
+      "id": "ufo",
+      "repo": "microsoft/UFO",
+      "path": "UFO",
+      "tier": "core",
+      "role": "Windows desktop hands using UIA, Win32, WinCOM and visual control",
+      "runtime": "isolated-python",
+      "install": true,
+      "status": "installed-working"
+    },
+    {
+      "id": "browser-use",
+      "repo": "browser-use/browser-use",
+      "path": "browser-use",
+      "tier": "core",
+      "role": "AI browser agent for natural-language web workflows",
+      "runtime": "isolated-python",
+      "environment": "browser-use",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "playwright-python",
+      "repo": "microsoft/playwright-python",
+      "path": "playwright-python",
+      "tier": "core",
+      "role": "Deterministic browser control and verification layer",
+      "runtime": "browser-use-environment",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "a2a",
+      "repo": "a2aproject/A2A",
+      "path": "A2A",
+      "tier": "core",
+      "role": "Agent-to-agent interoperability protocol",
+      "runtime": "protocol",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "a2a-python",
+      "repo": "a2aproject/a2a-python",
+      "path": "a2a-python",
+      "tier": "core",
+      "role": "Official Python SDK for A2A agents",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "a2a-samples",
+      "repo": "a2aproject/a2a-samples",
+      "path": "a2a-samples",
+      "tier": "reference",
+      "role": "A2A client, server and coworker examples",
+      "runtime": "reference",
+      "install": false,
+      "status": "optional"
+    },
+    {
+      "id": "langgraph",
+      "repo": "langchain-ai/langgraph",
+      "path": "LangGraph",
+      "tier": "core",
+      "role": "Stateful orchestration, checkpoints, long-running agent workflows and interrupts",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "mcp-python-sdk",
+      "repo": "modelcontextprotocol/python-sdk",
+      "path": "mcp-python-sdk",
+      "tier": "core",
+      "role": "MCP client/server SDK for portable tools and resources",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "mcp-servers",
+      "repo": "modelcontextprotocol/servers",
+      "path": "mcp-servers",
+      "tier": "reference",
+      "role": "Reference filesystem, fetch, git, memory, sequential-thinking and time servers",
+      "runtime": "reference",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "comfyui",
+      "repo": "Comfy-Org/ComfyUI",
+      "path": "ComfyUI",
+      "tier": "core",
+      "role": "Node-based image, video, audio and 3D generation backend",
+      "runtime": "isolated-python",
+      "environment": "comfyui",
+      "install": true,
+      "status": "bootstrap-no-models"
+    },
+    {
+      "id": "wan22",
+      "repo": "Wan-Video/Wan2.2",
+      "path": "Wan2.2",
+      "tier": "core",
+      "role": "Open video generation backend for creative missions",
+      "runtime": "isolated-python-or-cloud",
+      "environment": "wan22",
+      "install": true,
+      "status": "bootstrap-no-weights"
+    },
+    {
+      "id": "openhands",
+      "repo": "OpenHands/OpenHands",
+      "path": "OpenHands",
+      "tier": "core",
+      "role": "Dedicated software-engineering coworker for larger coding missions",
+      "runtime": "isolated-python",
+      "environment": "openhands",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "litellm",
+      "repo": "BerriAI/litellm",
+      "path": "litellm",
+      "tier": "optional",
+      "role": "Unified model gateway for cloud fallback and multi-provider routing",
+      "runtime": "isolated-python",
+      "environment": "model-gateway",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "pydantic-ai",
+      "repo": "pydantic/pydantic-ai",
+      "path": "pydantic-ai",
+      "tier": "optional",
+      "role": "Typed agent framework for experiments and structured workers",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "neo4j-agent-memory",
+      "repo": "neo4j-labs/agent-memory",
+      "path": "agent-memory",
+      "tier": "optional",
+      "role": "Graph-native short-term, long-term and reasoning memory backend",
+      "runtime": "external-service",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "mem0",
+      "repo": "mem0ai/mem0",
+      "path": "mem0",
+      "tier": "optional",
+      "role": "Alternative persistent memory backend and retrieval layer",
+      "runtime": "isolated-python-or-service",
+      "environment": "memory-lab",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "searxng",
+      "repo": "searxng/searxng",
+      "path": "searxng",
+      "tier": "optional",
+      "role": "Self-hosted web search endpoint for grounded research",
+      "runtime": "container-service",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "huggingface-hub",
+      "repo": "huggingface/huggingface_hub",
+      "path": "huggingface_hub",
+      "tier": "core",
+      "role": "Model, dataset and artifact discovery/download adapter",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "pywinauto",
+      "repo": "pywinauto/pywinauto",
+      "path": "pywinauto",
+      "tier": "core",
+      "role": "Low-level Windows UI Automation and Win32 fallback",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "bootstrap"
+    },
+    {
+      "id": "moonshine",
+      "repo": "moonshine-ai/moonshine",
+      "path": "moonshine",
+      "tier": "core",
+      "role": "On-device streaming speech recognition",
+      "runtime": "integrated-in-core",
+      "install": false,
+      "status": "integrated-in-core"
+    },
+    {
+      "id": "piper",
+      "repo": "OHF-Voice/piper1-gpl",
+      "path": "piper1-gpl",
+      "tier": "core",
+      "role": "Local neural text-to-speech",
+      "runtime": "integrated-in-core",
+      "install": false,
+      "status": "integrated-in-core"
+    },
+    {
+      "id": "silero-vad",
+      "repo": "snakers4/silero-vad",
+      "path": "silero-vad",
+      "tier": "optional",
+      "role": "Voice activity detection for hands-free listening",
+      "runtime": "agent-stack",
+      "environment": "agent-stack",
+      "install": true,
+      "status": "optional"
+    },
+    {
+      "id": "livekit-agents",
+      "repo": "livekit/agents",
+      "path": "livekit-agents",
+      "tier": "optional",
+      "role": "Networked realtime voice-agent infrastructure",
+      "runtime": "isolated-python",
+      "environment": "livekit",
+      "install": false,
+      "status": "future"
+    },
+    {
+      "id": "pyside",
+      "repo": "pyside/pyside-setup",
+      "path": "pyside-setup",
+      "tier": "core",
+      "role": "Official Qt for Python source",
+      "runtime": "integrated-in-core",
+      "install": false,
+      "status": "integrated-in-core"
+    },
+    {
+      "id": "pyautogui",
+      "repo": "asweigart/pyautogui",
+      "path": "pyautogui",
+      "tier": "core",
+      "role": "Mouse, keyboard, screenshots and GUI automation",
+      "runtime": "integrated-in-core",
+      "install": false,
+      "status": "integrated-in-core"
+    },
+    {
+      "id": "llama-cpp",
+      "repo": "ggml-org/llama.cpp",
+      "path": "llama.cpp",
+      "tier": "reference",
+      "role": "Native C/C++ local inference reference for the separate custom LLM engine",
+      "runtime": "reference",
+      "install": false,
+      "status": "separate-llm-repository"
+    },
+    {
+      "id": "microsoft-agent-framework",
+      "repo": "microsoft/agent-framework",
+      "path": "agent-framework",
+      "tier": "optional",
+      "role": "Alternative Microsoft agent workflow stack for future .NET/C# workers",
+      "runtime": "isolated-python-dotnet",
+      "install": false,
+      "status": "evaluate-later"
+    }
+  ]
+}
