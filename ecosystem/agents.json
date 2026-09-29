@@ -1,0 +1,71 @@
+{
+  "system": "ULTRON GENESIS",
+  "transport": "A2A",
+  "orchestration": "LangGraph",
+  "agents": [
+    {
+      "id": "agency",
+      "name": "Agency Cortex",
+      "role": "primary decision-maker and mission coordinator",
+      "backend": "ollama",
+      "model": "qwen3:8b",
+      "state": "local"
+    },
+    {
+      "id": "hands",
+      "name": "Windows Hands",
+      "role": "operate Windows applications and desktop UI",
+      "backend": "microsoft/UFO",
+      "state": "local-isolated"
+    },
+    {
+      "id": "browser",
+      "name": "Browser Worker",
+      "role": "research, navigation, form filling and browser workflows",
+      "backend": "browser-use + playwright",
+      "state": "isolated"
+    },
+    {
+      "id": "coder",
+      "name": "Code Worker",
+      "role": "larger software-engineering missions",
+      "backend": "OpenHands/OpenHands",
+      "state": "isolated"
+    },
+    {
+      "id": "researcher",
+      "name": "Research Worker",
+      "role": "web retrieval and evidence collection",
+      "backend": "browser-use + optional SearXNG + MCP fetch",
+      "state": "isolated"
+    },
+    {
+      "id": "image",
+      "name": "Creative Image Worker",
+      "role": "image generation and visual workflows",
+      "backend": "Comfy-Org/ComfyUI",
+      "state": "isolated-or-cloud"
+    },
+    {
+      "id": "video",
+      "name": "Video Worker",
+      "role": "text/image-to-video generation",
+      "backend": "Wan-Video/Wan2.2",
+      "state": "isolated-or-cloud"
+    },
+    {
+      "id": "memory",
+      "name": "Memory Worker",
+      "role": "long-term graph and semantic memory experiments",
+      "backend": "ULTRON local memory + optional Mem0/Neo4j",
+      "state": "local-first"
+    }
+  ],
+  "rules": {
+    "model_weights": "never download automatically during bootstrap",
+    "secrets": "never store API keys in Git",
+    "heavy_dependencies": "keep isolated from the ULTRON core environment",
+    "human_approval": "required before irreversible external actions",
+    "tool_execution": "report only results returned by the executed tool"
+  }
+}
