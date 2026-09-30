@@ -7,9 +7,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "ecosystem" / "components.json"
-TITAN_ROOT = Path(r"E:\Titan")
-REPOS_ROOT = TITAN_ROOT / "repos"
-ENVS_ROOT = TITAN_ROOT / "envs"
+EXTERNAL_ROOT = Path(r"E:\ULTRON\external")
+REPOS_ROOT = EXTERNAL_ROOT / "repos"
+ENVS_ROOT = EXTERNAL_ROOT / "envs"
 
 
 @dataclass(frozen=True)
@@ -30,15 +30,13 @@ class Component:
 
     @property
     def env_path(self) -> Path | None:
-        if not self.environment:
-            return None
-        return ENVS_ROOT / self.environment
+        return ENVS_ROOT / self.environment if self.environment else None
 
     @property
     def installed(self) -> bool:
         if self.status in {"integrated-in-core", "separate-llm-repository"}:
             return True
-        return (self.repo_path / ".git").is_dir() or self.repo_path.is_dir()
+        return self.repo_path.is_dir()
 
 
 def _read_manifest() -> dict[str, Any]:
@@ -49,71 +47,49 @@ def _read_manifest() -> dict[str, Any]:
 
 
 def components() -> list[Component]:
-    data = _read_manifest()
-    raw = data.get("components", [])
+    raw = _read_manifest().get("components", [])
     if not isinstance(raw, list):
         raise RuntimeError("ULTRON ecosystem manifest has no components list.")
-
-    result: list[Component] = []
+    result = []
     for item in raw:
         if not isinstance(item, dict):
             continue
-        result.append(
-            Component(
-                component_id=str(item.get("id", "")),
-                repo=str(item.get("repo", "")),
-                path=str(item.get("path", "")),
-                tier=str(item.get("tier", "")),
-                role=str(item.get("role", "")),
-                runtime=str(item.get("runtime", "")),
-                install=bool(item.get("install", False)),
-                status=str(item.get("status", "")),
-                environment=(
-                    str(item["environment"])
-                    if item.get("environment")
-                    else None
-                ),
-            )
-        )
+        result.append(Component(
+            component_id=str(item.get("id", "")),
+            repo=str(item.get("repo", "")),
+            path=str(item.get("path", "")),
+            tier=str(item.get("tier", "")),
+            role=str(item.get("role", "")),
+            runtime=str(item.get("runtime", "")),
+            install=bool(item.get("install", False)),
+            status=str(item.get("status", "")),
+            environment=str(item["environment"]) if item.get("environment") else None,
+        ))
     return result
 
 
 def get_component(component_id: str) -> Component:
     wanted = component_id.strip().lower()
     for item in components():
-        if item.component_id.lower() == wanted:
-            return item
-        if item.repo.lower() == wanted:
-            return item
-        if item.path.lower() == wanted:
+        if wanted in {item.component_id.lower(), item.repo.lower(), item.path.lower()}:
             return item
     raise KeyError(f"Unknown ecosystem component: {component_id}")
 
 
 def status_report(component_id: str | None = None) -> list[dict[str, Any]]:
     selected = [get_component(component_id)] if component_id else components()
-    report: list[dict[str, Any]] = []
-
-    for item in selected:
-        report.append(
-            {
-                "id": item.component_id,
-                "repo": item.repo,
-                "role": item.role,
-                "tier": item.tier,
-                "runtime": item.runtime,
-                "repo_path": str(item.repo_path),
-                "repo_present": item.installed,
-                "environment": (
-                    str(item.env_path) if item.env_path else None
-                ),
-                "environment_present": (
-                    item.env_path.is_dir() if item.env_path else None
-                ),
-                "manifest_status": item.status,
-            }
-        )
-    return report
+    return [{
+        "id": item.component_id,
+        "repo": item.repo,
+        "role": item.role,
+        "tier": item.tier,
+        "runtime": item.runtime,
+        "repo_path": str(item.repo_path),
+        "repo_present": item.installed,
+        "environment": str(item.env_path) if item.env_path else None,
+        "environment_present": item.env_path.is_dir() if item.env_path else None,
+        "manifest_status": item.status,
+    } for item in selected]
 
 
 def describe(component_id: str) -> dict[str, Any]:
@@ -129,9 +105,7 @@ def describe(component_id: str) -> dict[str, Any]:
         "manifest_status": item.status,
         "environment": str(item.env_path) if item.env_path else None,
         "repo_present": item.installed,
-        "environment_present": (
-            item.env_path.is_dir() if item.env_path else None
-        ),
+        "environment_present": item.env_path.is_dir() if item.env_path else None,
     }
 
 
@@ -139,13 +113,10 @@ def summary() -> dict[str, int]:
     items = components()
     return {
         "total": len(items),
-        "present": sum(1 for item in items if item.installed),
+        "present": sum(item.installed for item in items),
         "planned": sum(
-            1 for item in items
-            if item.install and item.status not in {
-                "integrated-in-core",
-                "separate-llm-repository",
-            }
+            item.install and item.status not in {"integrated-in-core", "separate-llm-repository"}
+            for item in items
         ),
-        "optional": sum(1 for item in items if item.tier == "optional"),
+        "optional": sum(item.tier == "optional" for item in items),
     }
