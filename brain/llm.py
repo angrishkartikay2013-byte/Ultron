@@ -469,6 +469,21 @@ def chat_raw(
     response.raise_for_status()
 
     body = response.json()
+
+    # Ollama reports prompt/eval token counts on completed chat responses.
+    # Keep the last completed call visible in the minimal token meter.
+    try:
+        from runtime.token_state import update as update_token_state
+
+        update_token_state(
+            model=selected_model,
+            context_limit=effective_ctx,
+            prompt_tokens=int(body.get("prompt_eval_count") or 0),
+            output_tokens=int(body.get("eval_count") or 0),
+        )
+    except (ImportError, TypeError, ValueError):
+        pass
+
     message = body.get("message")
     if not isinstance(message, dict):
         raise RuntimeError("Ollama returned an invalid chat message.")

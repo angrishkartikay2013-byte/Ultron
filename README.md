@@ -14,7 +14,7 @@ The V2 agency loop uses Ollama's native function/tool-calling API. Ollama docume
 - **Conversation Cortex:** Qwen2.5 3B remains available for lightweight voice/UI work.
 - **Vision Cortex:** Qwen2.5VL 3B reads the current screen through the existing `screen_vision` tool.
 - **Voice Cortex:** Moonshine Voice handles live microphone transcription; Piper handles spoken output.
-- **Memory Cortex:** conversation history plus durable memory tools and the Memory Galaxy UI.
+- **Memory Cortex:** conversation history plus durable memory tools.
 - **Tool Workshop:** the dynamic registry can discover normal tools and staged generated tools.
 
 ## V2 feature set
@@ -60,10 +60,10 @@ ULTRON V2 is considered feature-complete in the source tree when the following a
 3. Real tool execution feedback
 4. Voice/STT/TTS lifecycle
 5. Screen vision tool
-6. Durable memory and Memory Galaxy
+6. Durable memory
 7. Tool Workshop
-8. Interruptible orb UI
-9. Clean runtime ignore rules
+8. Ctrl+Y interruption
+9. Minimal token-left HUD
 10. Local setup and diagnostics documentation
 
 Local hardware validation is still required on the target Windows machine after pulling the release commit.
