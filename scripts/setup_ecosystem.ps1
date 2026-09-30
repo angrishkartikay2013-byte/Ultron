@@ -1,6 +1,6 @@
 # ULTRON GENESIS ecosystem bootstrap
-# Runtime adapters are installed into ULTRON's own .venv so the live tool
-# registry can import them. Heavy upstream source repositories remain external.
+# Runtime adapters are installed into ULTRON's own .venv. Browser Use stays
+# isolated because it pins Requests separately from ULTRON core.
 
 [CmdletBinding()]
 param(
@@ -28,6 +28,19 @@ $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $ExternalRoot "browser-cache"
 $env:OLLAMA_MODELS = Join-Path $UltronRoot "models"
 New-Item -ItemType Directory -Force -Path $env:HF_HOME,$env:PLAYWRIGHT_BROWSERS_PATH,$env:OLLAMA_MODELS | Out-Null
 
+function Invoke-Uv {
+    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    $savedVirtualEnv = $env:VIRTUAL_ENV
+    try {
+        Remove-Item Env:VIRTUAL_ENV -ErrorAction SilentlyContinue
+        & uv @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "uv command failed: uv $($Arguments -join ' ')" }
+    }
+    finally {
+        if ($savedVirtualEnv) { $env:VIRTUAL_ENV = $savedVirtualEnv }
+    }
+}
+
 function Ensure-GitRepository {
     param([string]$Name,[string]$Repo,[string]$RelativePath)
     $target = Join-Path $ReposRoot $RelativePath
@@ -47,6 +60,31 @@ function Ensure-GitRepository {
     if ($LASTEXITCODE -ne 0) { throw "Failed to clone $Name." }
 }
 
+function Ensure-Venv {
+    param([string]$Name)
+    $pythonCandidates = @(
+        "E:\Programs\Python312\python.exe",
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe")
+    )
+    $python = $null
+    foreach ($candidate in $pythonCandidates) {
+        if (Test-Path $candidate) { $python = $candidate; break }
+    }
+    if (-not $python) {
+        $cmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($cmd) { $python = $cmd.Source }
+    }
+    if (-not $python) { throw "Python 3.12 was not found. Install it at E:\Programs\Python312." }
+
+    $venvPath = Join-Path $EnvsRoot $Name
+    $pythonInVenv = Join-Path $venvPath "Scripts\python.exe"
+    if (-not (Test-Path $pythonInVenv)) {
+        & $python -m venv $venvPath
+        if ($LASTEXITCODE -ne 0) { throw "Failed to create $Name." }
+    }
+    return $pythonInVenv
+}
+
 $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
 foreach ($item in $manifest.components) {
     $status = [string]$item.status
@@ -60,17 +98,31 @@ foreach ($item in $manifest.components) {
 
 if ($WithEnvironments) {
     Write-Host "[RUNTIME] Syncing ULTRON runtime integrations into .venv..." -ForegroundColor Cyan
-    uv sync --extra runtime
-    if ($LASTEXITCODE -ne 0) { throw "Runtime integration sync failed." }
+    Invoke-Uv sync --extra runtime
 
-    Write-Host "[BROWSER] Installing Chromium..." -ForegroundColor Cyan
-    uv run playwright install chromium
-    if ($LASTEXITCODE -ne 0) { throw "Chromium installation failed." }
+    Write-Host "[BROWSER] Installing Playwright Chromium for ULTRON..." -ForegroundColor Cyan
+    Invoke-Uv run playwright install chromium
+
+    $browser = Ensure-Venv "browser-use"
+    Write-Host "[BROWSER] Installing Browser Use into isolated E-drive environment..." -ForegroundColor Cyan
+    & $browser -m pip install --upgrade pip wheel
+    if ($LASTEXITCODE -ne 0) { throw "Failed to update browser-use pip." }
+    & $browser -m pip install "browser-use==0.13.10" "playwright>=1.50,<2"
+    if ($LASTEXITCODE -ne 0) { throw "Browser Use installation failed." }
+    & $browser -m playwright install chromium
+    if ($LASTEXITCODE -ne 0) { throw "Browser Use Chromium installation failed." }
 
     if ($Everything) {
-        Write-Host "[RUNTIME] Running optional full dependency sync..." -ForegroundColor Cyan
-        uv sync --extra all
-        if ($LASTEXITCODE -ne 0) { throw "Full runtime sync failed." }
+        Write-Host "[RUNTIME] Syncing optional full ULTRON adapters..." -ForegroundColor Cyan
+        Invoke-Uv sync --extra all
+
+        $vad = Ensure-Venv "voice"
+        & $vad -m pip install "silero-vad"
+        if ($LASTEXITCODE -ne 0) { throw "Silero VAD installation failed." }
+
+        $gateway = Ensure-Venv "model-gateway"
+        & $gateway -m pip install "litellm"
+        if ($LASTEXITCODE -ne 0) { throw "LiteLLM installation failed." }
     }
 }
 
@@ -78,6 +130,7 @@ Write-Host ""
 Write-Host "[OK] ULTRON ecosystem bootstrap finished." -ForegroundColor Green
 Write-Host "[OK] External repos: $ReposRoot"
 Write-Host "[OK] Runtime environment: $UltronRoot\.venv"
+Write-Host "[OK] Browser Use environment: $EnvsRoot\browser-use"
 Write-Host "[OK] Caches: $ExternalRoot"
 Write-Host "[OK] Models: $env:OLLAMA_MODELS"
 Write-Host "[OK] SearXNG source clone is skipped on Windows; its official deployment is container-oriented."

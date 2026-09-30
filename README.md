@@ -75,7 +75,7 @@ ULTRON GENESIS now has an explicit external ecosystem registry in `ecosystem/com
 The ecosystem is designed as a set of isolated capabilities around the existing ULTRON core:
 
 - **Windows hands:** Microsoft UFO
-- **Browser worker:** Browser Use + Playwright
+- **Browser worker:** Browser Use (isolated) + Playwright (ULTRON runtime)
 - **AI-to-AI coworkers:** A2A + the A2A Python SDK
 - **Mission orchestration:** LangGraph
 - **Tool protocol:** MCP Python SDK + reference servers
@@ -125,7 +125,7 @@ The separate `angrishkartikay2013-byte/llm` repository remains the custom C++ LL
 
 ## Runtime-integrated ecosystem
 
-The bootstrap now installs the lightweight runtime adapters into ULTRON's own `.venv`, because the live tool registry imports those packages directly.
+The bootstrap installs lightweight runtime adapters into ULTRON's own `.venv`. Browser Use is intentionally isolated because its current package pins `requests==2.33.0`, which conflicts with ULTRON's core Requests dependency. Browser Use is launched through its E-drive environment.
 
 Run:
 
@@ -136,6 +136,6 @@ uv run diagnostics.py
 uv run genesis.py
 ```
 
-Browser Use has native Ollama support, so the browser agent can use ULTRON's local model stack without a cloud API key. The Browser Use project currently documents Python 3.11+ and local Ollama support.
+Browser Use has native Ollama support, so the isolated browser worker can use ULTRON's local model stack without a cloud API key. The Browser Use project currently documents Python 3.11+ and local Ollama support.
 
 SearXNG is intentionally not cloned by the Windows bootstrap. Its current official deployment documentation recommends container-based installation; ULTRON therefore treats it as an external optional service on Windows. The `browser_agent` remains the local browser-research path.
