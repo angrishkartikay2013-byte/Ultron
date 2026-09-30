@@ -100,19 +100,19 @@ Run the core ecosystem bootstrap:
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_ecosystem.ps1
 ```
 
-To also install the lightweight agent/browser environments:
+To install the runtime integration packages into ULTRON's own `.venv`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_ecosystem.ps1 -WithEnvironments
 ```
 
-For the full configured repository set plus optional model-gateway environment:
+For the full configured repository set plus all runtime adapters:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_ecosystem.ps1 -Everything -WithEnvironments
 ```
 
-The bootstrap does **not** download ComfyUI or Wan model weights automatically.
+The bootstrap does **not** download ComfyUI or Wan model weights automatically. SearXNG source checkout is skipped on Windows because its current official deployment path is container-oriented.
 
 Run diagnostics after setup:
 

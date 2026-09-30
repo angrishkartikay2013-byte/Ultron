@@ -51,11 +51,11 @@ ULTRON GENESIS is the master desktop-agent project. Upstream projects remain ext
 | Layer | Project | Purpose | Isolation |
 | --- | --- | --- | --- |
 | Hands | `microsoft/UFO` | Deep Windows UI automation | Existing UFO venv |
-| Browser | `browser-use/browser-use` | Natural-language browser agent | `E:\\Titan\\envs\\browser-use` |
-| Browser control | `microsoft/playwright-python` | Deterministic browser automation and verification | Browser env |
-| Coworkers | `a2aproject/A2A` + `a2a-python` | Agent-to-agent communication | Agent stack |
-| Orchestration | `langchain-ai/langgraph` | Stateful long-running missions | Agent stack |
-| Tools | `modelcontextprotocol/python-sdk` | MCP adapters | Agent stack |
+| Browser | `browser-use/browser-use` | Natural-language browser agent | ULTRON `.venv` |
+| Browser control | `microsoft/playwright-python` | Deterministic browser automation and verification | ULTRON `.venv` |
+| Coworkers | `a2aproject/A2A` + `a2a-python` | Agent-to-agent communication | ULTRON `.venv` + adapters |
+| Orchestration | `langchain-ai/langgraph` | Stateful long-running missions | ULTRON `.venv` |
+| Tools | `modelcontextprotocol/python-sdk` | MCP adapters | ULTRON `.venv` |
 | Reference tools | `modelcontextprotocol/servers` | Filesystem, fetch, git, memory, time and reasoning references | Reference |
 | Images | `Comfy-Org/ComfyUI` | Graph-based generation backend | Dedicated future env |
 | Video | `Wan-Video/Wan2.2` | Open video generation backend | Dedicated future env / cloud |
@@ -64,10 +64,10 @@ ULTRON GENESIS is the master desktop-agent project. Upstream projects remain ext
 | Memory | `neo4j-labs/agent-memory` | Optional graph-native memory | Optional service |
 | Memory | `mem0ai/mem0` | Optional persistent memory backend | Optional env/service |
 | Search | `searxng/searxng` | Optional self-hosted research/search endpoint | Container/service |
-| Model hub | `huggingface/huggingface_hub` | Model, dataset and artifact discovery | Agent stack |
-| Windows fallback | `pywinauto/pywinauto` | Control-level Win32/UIA automation | Agent stack |
-| Voice VAD | `snakers4/silero-vad` | Optional hands-free speech activity detection | Agent stack |
-| Typed workers | `pydantic/pydantic-ai` | Optional typed worker/agent experiments | Agent stack |
+| Model hub | `huggingface/huggingface_hub` | Model, dataset and artifact discovery | ULTRON `.venv` |
+| Windows fallback | `pywinauto/pywinauto` | Control-level Win32/UIA automation | ULTRON `.venv` |
+| Voice VAD | `snakers4/silero-vad` | Optional hands-free speech activity detection | ULTRON `.venv` |
+| Typed workers | `pydantic/pydantic-ai` | Optional typed worker/agent experiments | ULTRON `.venv` |
 
 ## Hardware rule
 

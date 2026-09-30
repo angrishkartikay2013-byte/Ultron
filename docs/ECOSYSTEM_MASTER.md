@@ -26,13 +26,13 @@ This file is the source of truth for ULTRON's external ecosystem. Status describ
 
 | Repository | Purpose | Status | Priority |
 | --- | --- | --- | --- |
-| https://github.com/modelcontextprotocol/python-sdk | Standard MCP clients/servers and interoperable external tools | **NOT IN RUNTIME** | **P0** |
-| https://github.com/pywinauto/pywinauto | Windows UI Automation + Win32 control-level automation | **NOT IN RUNTIME** | **P0** |
-| https://github.com/microsoft/playwright-python | Reliable Chromium/Firefox/WebKit browser control | **NOT IN RUNTIME** | **P0** |
-| https://github.com/browser-use/browser-use | Higher-level browser agent and web-task automation | **NOT IN RUNTIME** | **P1** |
-| https://github.com/snakers4/silero-vad | Additional voice activity detection/fallback | **NOT IN RUNTIME** | **P1** |
-| https://github.com/searxng/searxng | Self-hosted web metasearch with HTTP API | **NOT IN RUNTIME** | **P1** |
-| https://github.com/huggingface/huggingface_hub | Model/dataset discovery and asset management | **NOT IN RUNTIME** | **P1** |
+| https://github.com/modelcontextprotocol/python-sdk | Standard MCP clients/servers and interoperable external tools | **RUNTIME ADAPTER** | **P0** |
+| https://github.com/pywinauto/pywinauto | Windows UI Automation + Win32 control-level automation | **RUNTIME ADAPTER** | **P0** |
+| https://github.com/microsoft/playwright-python | Reliable Chromium/Firefox/WebKit browser control | **RUNTIME ADAPTER** | **P0** |
+| https://github.com/browser-use/browser-use | Higher-level browser agent and web-task automation | **RUNTIME ADAPTER** | **P1** |
+| https://github.com/snakers4/silero-vad | Additional voice activity detection/fallback | **OPTIONAL RUNTIME ADAPTER** | **P1** |
+| https://github.com/searxng/searxng | Self-hosted web metasearch with HTTP API | **OPTIONAL CONTAINER SERVICE** | **P1** |
+| https://github.com/huggingface/huggingface_hub | Model/dataset discovery and asset management | **RUNTIME ADAPTER** | **P1** |
 | https://github.com/microsoft/UFO | Advanced Windows AgentOS and GUI+API automation reference | **REFERENCE ONLY** | **P1** |
 | https://github.com/modelcontextprotocol/servers | Reference MCP servers for filesystem, fetch, memory, git and more | **REFERENCE ONLY** | **P1** |
 | https://github.com/microsoft/agent-framework | Future Python/.NET multi-agent orchestration | **REFERENCE / FUTURE** | **P2** |
