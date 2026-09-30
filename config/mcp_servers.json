@@ -2,7 +2,11 @@
   "servers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "E:\\ULTRON"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@latest",
+        "E:\\ULTRON"
+      ]
     }
   }
 }

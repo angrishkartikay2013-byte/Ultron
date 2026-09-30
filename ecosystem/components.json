@@ -3,8 +3,8 @@
     "name": "ULTRON GENESIS",
     "version": "3.0.0-ecosystem",
     "master_repository": "angrishkartikay2013-byte/Ultron",
-    "external_root": "E:\\Titan\\repos",
-    "environment_root": "E:\\Titan\\envs",
+    "external_root": "E:\\ULTRON\\external\\repos",
+    "environment_root": "E:\\ULTRON\\external\\envs",
     "policy": "Keep upstream projects external and isolated. Do not vendor large frameworks or model weights into the ULTRON source tree."
   },
   "components": [
@@ -35,9 +35,8 @@
       "tier": "core",
       "role": "AI browser agent for natural-language web workflows",
       "runtime": "isolated-python",
-      "environment": "browser-use",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "playwright-python",
@@ -47,7 +46,7 @@
       "role": "Deterministic browser control and verification layer",
       "runtime": "browser-use-environment",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "a2a",
@@ -66,9 +65,8 @@
       "tier": "core",
       "role": "Official Python SDK for A2A agents",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "a2a-samples",
@@ -87,9 +85,8 @@
       "tier": "core",
       "role": "Stateful orchestration, checkpoints, long-running agent workflows and interrupts",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "mcp-python-sdk",
@@ -98,9 +95,8 @@
       "tier": "core",
       "role": "MCP client/server SDK for portable tools and resources",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "mcp-servers",
@@ -193,10 +189,10 @@
       "repo": "searxng/searxng",
       "path": "searxng",
       "tier": "optional",
-      "role": "Self-hosted web search endpoint for grounded research",
+      "role": "Self-hosted web search endpoint; use Docker/WSL/container service on Windows",
       "runtime": "container-service",
-      "install": true,
-      "status": "optional"
+      "install": false,
+      "status": "container-service-windows-skip"
     },
     {
       "id": "huggingface-hub",
@@ -205,9 +201,8 @@
       "tier": "core",
       "role": "Model, dataset and artifact discovery/download adapter",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "pywinauto",
@@ -216,9 +211,8 @@
       "tier": "core",
       "role": "Low-level Windows UI Automation and Win32 fallback",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "bootstrap"
+      "status": "runtime-adapter"
     },
     {
       "id": "moonshine",
@@ -247,9 +241,8 @@
       "tier": "optional",
       "role": "Voice activity detection for hands-free listening",
       "runtime": "agent-stack",
-      "environment": "agent-stack",
       "install": true,
-      "status": "optional"
+      "status": "runtime-adapter"
     },
     {
       "id": "livekit-agents",
