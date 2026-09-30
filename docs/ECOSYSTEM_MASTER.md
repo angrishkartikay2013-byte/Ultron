@@ -12,7 +12,7 @@ This file is the source of truth for ULTRON's external ecosystem. Status describ
 | Qwen2.5VL 3B | Visual cortex model | **HAVE / CORE** |
 | Moonshine Voice | Local streaming speech recognition | **HAVE / CORE** |
 | Piper | Local text-to-speech | **HAVE / CORE** |
-| PySide6 | Floating orb and Memory Galaxy UI | **HAVE / CORE** |
+| PySide6 | Minimal token-left HUD | **HAVE / CORE** |
 | PyAutoGUI | Mouse, keyboard and screenshot automation | **HAVE / CORE** |
 | Requests | HTTP client for local/API integrations | **HAVE / CORE** |
 | NumPy / Pillow | Audio/image/runtime support | **HAVE / CORE** |
@@ -49,7 +49,7 @@ This file is the source of truth for ULTRON's external ecosystem. Status describ
 | Moonshine Python API | microphone transcription/events | **HAVE** |
 | Piper Python API | local speech synthesis | **HAVE** |
 | PyAutoGUI API | mouse/keyboard/screenshots | **HAVE** |
-| PySide6/Qt API | orb/UI/windows | **HAVE** |
+| PySide6/Qt API | minimal token HUD | **HAVE** |
 | Local filesystem API | memory, tools, configs, screenshots | **HAVE** |
 | Windows process/Shell APIs through Python | app launching and local desktop control | **HAVE** |
 | GitHub API/connector | source-control development workflow | **HAVE FOR FOUNDER WORKFLOW** |

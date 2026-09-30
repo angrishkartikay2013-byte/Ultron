@@ -27,10 +27,9 @@ The V2 agency loop uses Ollama's native function/tool-calling API. Ollama docume
 - Windows app launching, typing, mouse, hotkeys, scrolling and screenshots
 - Visual screen inspection and coordinate-based visual interaction
 - Durable memory storage and recall
-- Memory Galaxy visualization
 - Tool Workshop for syntax-checked generated tools
 - Ctrl+Y interruption
-- Floating orb HUD with heard/interpreting/conclusion states
+- Minimal token-left HUD
 - Local-first model and voice assets
 
 ## Run

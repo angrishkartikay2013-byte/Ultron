@@ -48,18 +48,28 @@ class VoiceRuntime(QThread):
         with self._lock:
             self._active_stop = event
 
+    def _interrupt_loop(self) -> None:
+        was_down = False
+        while not self.stop_event.is_set():
+            down = _interrupt_pressed()
+            if down and not was_down:
+                self.interrupt()
+            was_down = down
+            time.sleep(0.035)
+
     def run(self) -> None:
         from voice import listen_once, load_voice_models, speak
 
         load_voice_models()
 
-        last_interrupt = False
-        while not self.stop_event.is_set():
-            interrupted = _interrupt_pressed()
-            if interrupted and not last_interrupt:
-                self.interrupt()
-            last_interrupt = interrupted
+        monitor = threading.Thread(
+            target=self._interrupt_loop,
+            name="ultron-interrupt-monitor",
+            daemon=True,
+        )
+        monitor.start()
 
+        while not self.stop_event.is_set():
             listen_stop = threading.Event()
             self._set_active(listen_stop)
             try:
@@ -96,12 +106,6 @@ class VoiceRuntime(QThread):
 
             if self.stop_event.wait(1.5):
                 break
-
-            # Keep Ctrl+Y responsive between turns without changing the
-            # normal voice flow.
-            for _ in range(6):
-                if self.stop_event.wait(0.05):
-                    return
 
 
 def main() -> int:

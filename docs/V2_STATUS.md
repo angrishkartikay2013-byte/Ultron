@@ -13,9 +13,8 @@ The repository now contains the intended core V2 architecture:
 - Multi-round tool execution with grounded results
 - Durable memory store and model-accessible memory tool
 - Existing screen vision integration
-- Existing Memory Galaxy UI
 - Dynamic Tool Workshop staging with syntax validation
-- Ctrl+Y interruption and orb activity states
+- Ctrl+Y interruption and headless voice runtime
 - Runtime/model/recording ignore rules
 - GitHub sanity workflow
 
