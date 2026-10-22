@@ -1,6 +1,7 @@
 # ULTRON GENESIS ecosystem bootstrap
-# Runtime adapters are installed into ULTRON's own .venv. Browser Use stays
-# isolated because it pins Requests separately from ULTRON core.
+# Keep Browser Use in its own E-drive venv: it pins Requests independently.
+# The core project never depends on Browser Use directly.
+# Large model weights are never downloaded by this script.
 
 [CmdletBinding()]
 param(
@@ -17,6 +18,7 @@ $EnvsRoot = Join-Path $ExternalRoot "envs"
 $CacheRoot = "E:\PipCache"
 $TempRoot = Join-Path $ExternalRoot "tmp"
 $ManifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\ecosystem\components.json"))
+$ProjectFile = Join-Path $UltronRoot "pyproject.toml"
 
 New-Item -ItemType Directory -Force -Path $ReposRoot,$EnvsRoot,$CacheRoot,$TempRoot | Out-Null
 $env:PIP_CACHE_DIR = $CacheRoot
@@ -74,7 +76,7 @@ function Ensure-Venv {
         $cmd = Get-Command python -ErrorAction SilentlyContinue
         if ($cmd) { $python = $cmd.Source }
     }
-    if (-not $python) { throw "Python 3.12 was not found. Install it at E:\Programs\Python312." }
+    if (-not $python) { throw "Python 3.12 was not found. Use your existing Python installation." }
 
     $venvPath = Join-Path $EnvsRoot $Name
     $pythonInVenv = Join-Path $venvPath "Scripts\python.exe"
@@ -97,31 +99,31 @@ foreach ($item in $manifest.components) {
 }
 
 if ($WithEnvironments) {
-    Write-Host "[RUNTIME] Syncing ULTRON runtime integrations into .venv..." -ForegroundColor Cyan
+    if (-not (Test-Path $ProjectFile)) { throw "Missing ULTRON project file: $ProjectFile" }
+    $projectText = Get-Content -Raw -Path $ProjectFile
+    if ($projectText -match '(?im)^\s*"browser-use(?:\[[^"]+\])?(?:[<>=!~].*)?"\s*,?\s*$') {
+        throw "Dependency conflict: Browser Use must NOT be listed in core dependencies or extras. It is installed only into external\envs\browser-use."
+    }
+
+    Write-Host "[RUNTIME] Syncing ULTRON core + runtime adapters..." -ForegroundColor Cyan
     Invoke-Uv sync --extra runtime
 
-    Write-Host "[BROWSER] Installing Playwright Chromium for ULTRON..." -ForegroundColor Cyan
-    Invoke-Uv run playwright install chromium
+    Write-Host "[BROWSER] Installing Chromium for ULTRON's Playwright..." -ForegroundColor Cyan
+    Invoke-Uv run --no-sync playwright install chromium
 
     $browser = Ensure-Venv "browser-use"
-    Write-Host "[BROWSER] Installing Browser Use into isolated E-drive environment..." -ForegroundColor Cyan
+    Write-Host "[BROWSER] Installing Browser Use only into its isolated E-drive environment..." -ForegroundColor Cyan
     & $browser -m pip install --upgrade pip wheel
-    if ($LASTEXITCODE -ne 0) { throw "Failed to update browser-use pip." }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to update Browser Use pip." }
     & $browser -m pip install "browser-use==0.13.10" "playwright>=1.50,<2"
     if ($LASTEXITCODE -ne 0) { throw "Browser Use installation failed." }
     & $browser -m playwright install chromium
     if ($LASTEXITCODE -ne 0) { throw "Browser Use Chromium installation failed." }
 
     if ($Everything) {
-        Write-Host "[RUNTIME] Syncing optional full ULTRON adapters..." -ForegroundColor Cyan
-        Invoke-Uv sync --extra all
-
-        $vad = Ensure-Venv "voice"
-        & $vad -m pip install "silero-vad"
-        if ($LASTEXITCODE -ne 0) { throw "Silero VAD installation failed." }
-
         $gateway = Ensure-Venv "model-gateway"
-        & $gateway -m pip install "litellm"
+        Write-Host "[OPTIONAL] Installing LiteLLM in its own environment..." -ForegroundColor Cyan
+        & $gateway -m pip install --upgrade pip wheel litellm
         if ($LASTEXITCODE -ne 0) { throw "LiteLLM installation failed." }
     }
 }
@@ -131,7 +133,7 @@ Write-Host "[OK] ULTRON ecosystem bootstrap finished." -ForegroundColor Green
 Write-Host "[OK] External repos: $ReposRoot"
 Write-Host "[OK] Runtime environment: $UltronRoot\.venv"
 Write-Host "[OK] Browser Use environment: $EnvsRoot\browser-use"
-Write-Host "[OK] Caches: $ExternalRoot"
+Write-Host "[OK] Caches and browser downloads: $ExternalRoot"
 Write-Host "[OK] Models: $env:OLLAMA_MODELS"
 Write-Host "[OK] SearXNG source clone is skipped on Windows; its official deployment is container-oriented."
 Write-Host "[OK] Model weights are never downloaded automatically."
