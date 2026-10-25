@@ -1,7 +1,7 @@
 [project]
 name = "ultron"
 version = "0.7.1"
-description = "ULTRON GENESIS local Windows AI assistant"
+description = "ULTRON local Windows AI assistant"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
