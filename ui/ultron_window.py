@@ -229,7 +229,7 @@ class HomePage(QWidget):
 
         self.right = HudPanel("Mission interface", [
             ("ACTIVE MISSION", "NONE"),
-            ("MODEL", "LOCAL OLLAMA"),
+            ("MODEL", "AUTO CLOUD / LOCAL"),
             ("INPUT", "VOICE + TEXT"),
             ("INTERRUPT", "CTRL + Y"),
         ])
@@ -465,6 +465,9 @@ class UltronWindow(QWidget):
     def set_tokens(self, remaining: int) -> None:
         self.home.set_tokens(remaining)
         self.cortex.set_tokens(remaining)
+
+    def set_model_provider(self, provider: str) -> None:
+        self.home.right.set_value("MODEL", provider.upper())
 
     def set_busy(self, busy: bool) -> None:
         self.cortex.set_busy(busy)
