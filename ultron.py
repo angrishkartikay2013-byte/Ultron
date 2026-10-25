@@ -8,6 +8,7 @@ from PySide6.QtCore import QThread, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 
 from brain.agent import handle_prompt
+from brain.llm import provider_status
 from runtime.token_state import get as token_state
 from ui.ultron_window import UltronWindow
 
@@ -139,6 +140,7 @@ class VoiceRuntime(QThread):
 class UltronApplication:
     def __init__(self) -> None:
         self.window = UltronWindow()
+        self.window.set_model_provider(provider_status())
         self.voice = VoiceRuntime()
         self.workers: set[PromptWorker] = set()
 
