@@ -6,7 +6,7 @@ ULTRON is a local, voice-first Windows AI assistant designed as an agent system 
 
 **Voice → Agency Brain → Native Tools → Real Execution Results → Agency Brain → Voice**
 
-The V2 agency loop uses Ollama's native function/tool-calling API. Ollama documents tool calling through the `tools` field and tool result messages; its current Python examples also support multiple tool calls in a loop. See the official Ollama tool-calling documentation and examples at https://ollama.com/blog/tool-support and https://github.com/ollama/ollama-python/blob/main/examples/tools.py.
+The agency loop supports local Ollama tool calling and an OpenRouter-compatible hosted API path. With `OPENROUTER_API_KEY` present, `ULTRON_PROVIDER=auto` selects OpenRouter for the agent/tool loop; without a key, ULTRON uses Ollama locally. The hosted path converts ULTRON's tool messages to the OpenAI-compatible tool-call format, while desktop tools continue to execute on the Windows machine.
 
 ### Brain regions
 
@@ -45,6 +45,35 @@ From the repository root:
 `uv run diagnostics.py`
 
 `uv run ultron.py`
+
+## Hosted API setup (OpenRouter)
+
+ULTRON can use OpenRouter's free-model router for the agency brain while keeping Ollama available as the local fallback. The default model is `openrouter/free`; model availability and free-tier limits are controlled by the provider and can change.
+
+In PowerShell, set the key for this terminal session without echoing it into the command history:
+
+```powershell
+$secureKey = Read-Host "Paste your OpenRouter API key" -AsSecureString
+$keyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
+try {
+    $env:OPENROUTER_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPointer)
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPointer)
+}
+$env:ULTRON_PROVIDER = "openrouter"
+$env:ULTRON_OPENROUTER_MODEL = "openrouter/free"
+uv run diagnostics.py
+uv run ultron.py
+```
+
+To force local Ollama instead:
+
+```powershell
+$env:ULTRON_PROVIDER = "ollama"
+uv run ultron.py
+```
+
+The default `ULTRON_PROVIDER=auto` uses OpenRouter when `OPENROUTER_API_KEY` is set and Ollama otherwise. The API key is read only from the environment; never commit it to the repository or paste it into chat. When using a hosted model, prompts and tool outputs sent to the agency model leave the PC and are processed by the selected provider. Don't send passwords, private documents, or other sensitive data to a hosted model.
 
 ## Model setup
 
