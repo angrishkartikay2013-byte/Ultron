@@ -40,7 +40,7 @@ Run `uv run ultron.py`. The main window uses a dark instrument-panel HUD with a 
 
 From the repository root:
 
-`uv sync`
+`uv sync --extra runtime`
 
 `uv run diagnostics.py`
 
@@ -134,7 +134,7 @@ The bootstrap installs lightweight runtime adapters into ULTRON's own `.venv`. B
 Run:
 
 ```powershell
-uv sync
+uv sync --extra runtime
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_ecosystem.ps1 -Everything -WithEnvironments
 uv run diagnostics.py
 uv run ultron.py
