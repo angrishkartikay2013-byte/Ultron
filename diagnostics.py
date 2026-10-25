@@ -64,6 +64,7 @@ def main() -> int:
             ),
         ),
         ("Brain router", lambda: importlib.import_module("brain.router").FAST_MODEL),
+        ("Agent provider", lambda: importlib.import_module("brain.llm").provider_status()),
         (
             "Ollama models",
             lambda: ", ".join(
