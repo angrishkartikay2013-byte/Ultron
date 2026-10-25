@@ -1,291 +1,205 @@
+from __future__ import annotations
 
-import json
+import ctypes
+import threading
 import time
-import pkgutil
-import importlib
-from pathlib import Path
-
-import requests
-
-# ==========================================================
-# CONFIG
-# ==========================================================
-
-VERSION = "v0.6 Alpha - Mission Engine"
-MODEL = "qwen3:8b"
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-
-BASE_DIR = Path(__file__).parent
-TOOLS_DIR = BASE_DIR / "tools"
-MEMORY_FILE = BASE_DIR / "memory" / "memory.json"
-
-# ==========================================================
-# MEMORY
-# ==========================================================
-
-if not MEMORY_FILE.exists():
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    MEMORY_FILE.write_text(json.dumps({
-        "user": {"name": "Kartikay"},
-        "memories": [],
-        "projects": {
-            "ultron": {
-                "version": VERSION,
-                "status": "online"
-            }
-        }
-    }, indent=2))
 
-memory = json.loads(MEMORY_FILE.read_text())
-USERNAME = memory.get("user", {}).get("name", "Kartikay")
-
-# ==========================================================
-# LOAD TOOLS AUTOMATICALLY
-# ==========================================================
-
-TOOLS = {}
-
-for module in pkgutil.iter_modules([str(TOOLS_DIR)]):
-    mod = importlib.import_module(f"tools.{module.name}")
-
-    if hasattr(mod, "TOOL") and hasattr(mod, "run"):
-        TOOLS[mod.TOOL["name"]] = mod
-
-tool_list = "\n".join(
-    f"- {tool.TOOL['name']}: {tool.TOOL['description']}"
-    for tool in TOOLS.values()
-)
-
-# ==========================================================
-# ULTRON SYSTEM PROMPT
-# ==========================================================
-
-SYSTEM_PROMPT = f"""
-You are ULTRON, Kartikay's AI operating system.
-
-Available tools:
-{tool_list}
-
-When the user asks you to do something on the PC,
-reply ONLY with JSON.
-
-Single action example:
-
-{{
-  "tool":"open_app",
-  "arguments":{{"app":"paint"}}
-}}
-
-Mission example:
-
-{{
-  "mission":[
-    {{"tool":"open_app","arguments":{{"app":"notepad"}}}},
-    {{"tool":"wait","arguments":{{"seconds":1}}}},
-    {{"tool":"type_text","arguments":{{"text":"Hello Founder"}}}}
-  ]
-}}
-
-Rules:
-- Use "mission" for multiple steps.
-- Use "wait" when a program needs time to open.
-- If no tool is needed, reply with plain text.
-- Never include reasoning.
-- Never include markdown.
-"""
-
-# ==========================================================
-# TALK TO OLLAMA
-# ==========================================================
-
-
-def ask_ultron(prompt: str):
-
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "system": SYSTEM_PROMPT,
-            "prompt": prompt,
-            "stream": False,
-            "think": False
-        },
-        timeout=300
-    )
-
-    response.raise_for_status()
-
-    return response.json()["response"]
-
-
-# ==========================================================
-# EXECUTE ONE TOOL
-# ==========================================================
-
-
-def execute_single(tool_name, arguments):
-
-    if tool_name == "wait":
-        seconds = float(arguments.get("seconds", 1))
-        time.sleep(seconds)
-        return f"⏳ Waited {seconds} second(s)."
-
-    tool = TOOLS.get(tool_name)
-
-    if tool is None:
-        return f"❌ Unknown tool: {tool_name}"
-
-    try:
-        return tool.run(**arguments)
-
-    except Exception as e:
-        return f"❌ {tool_name}: {e}"
-
-
-# ==========================================================
-# EXECUTE AI RESPONSE
-# ==========================================================
-
-
-def execute_response(reply):
-
-    try:
-        data = json.loads(reply)
-
-    except json.JSONDecodeError:
-        return None
-
-    outputs = []
-
-    if "mission" in data:
-
-        print("🚀 Starting mission...")
-
-        for i, step in enumerate(data["mission"], start=1):
-
-            tool_name = step.get("tool")
-            arguments = step.get("arguments", {})
-
-            print(f"Step {i}: {tool_name}")
-
-            result = execute_single(tool_name, arguments)
-
-            outputs.append(result)
-
-        print("✅ Mission complete.")
-
-        return "\n".join(outputs)
-
-    if "tool" in data:
-        return execute_single(
-            data["tool"],
-            data.get("arguments", {})
-        )
-
-    return None
-
-
-# ==========================================================
-# MEMORY
-# ==========================================================
-
-
-def save_memory(text):
-
-    memory.setdefault("memories", []).append(text)
-
-    MEMORY_FILE.write_text(json.dumps(memory, indent=2))
-
-
-def show_memory():
-
-    print("\n====== MEMORY ======\n")
-
-    memories = memory.get("memories", [])
-
-    if not memories:
-        print("No memories saved.")
-    else:
-        for i, item in enumerate(memories, start=1):
-            print(f"{i}. {item}")
-
-    print("\n====================")
-
-
-# ==========================================================
-# BOOT SCREEN
-# ==========================================================
-
-print("=" * 60)
-print("           U L T R O N   G E N E S I S")
-print("=" * 60)
-print(f"🧠 Brain    : {MODEL}")
-print(f"👤 User     : {USERNAME}")
-print(f"🔧 Tools    : {len(TOOLS)} loaded")
-print(f"🚀 Version  : {VERSION}")
-print("=" * 60)
-
-for tool in TOOLS.values():
-    print("✓", tool.TOOL["name"])
-
-print("=" * 60)
-print("Type 'help' for commands.")
-print("Type 'exit' to shut down.")
-print("=" * 60)
-
-# ==========================================================
-# LOOP
-# ==========================================================
-
-while True:
-
-    command = input("\nULTRON > ").strip()
-
-    if command == "":
-        continue
-
-    lower = command.lower()
-
-    if lower == "exit":
-        print("👋 ULTRON shutting down...")
-        break
-
-    if lower == "help":
-
-        print("""
-remember <text>
-memory
-exit
-
-Everything else is handled by ULTRON AI.
-""")
-        continue
-
-    if lower.startswith("remember "):
-        save_memory(command[9:])
-        print("💾 Memory saved.")
-        continue
-
-    if lower == "memory":
-        show_memory()
-        continue
-
-    print("\n🧠 ULTRON...\n")
-
-    try:
-        reply = ask_ultron(command)
-
-        result = execute_response(reply)
-
-        if result is None:
-            print(reply)
-        else:
-            print(result)
-
-    except requests.exceptions.ConnectionError:
-        print("❌ ULTRON brain is offline.")
-        print("Run: ollama serve")
-
-    except Exception as e:
-        print("❌ Error")
-        print(e)
+from PySide6.QtCore import QThread, Signal, QTimer
+from PySide6.QtWidgets import QApplication
+
+from brain.agent import handle_prompt
+from runtime.token_state import get as token_state
+from ui.ultron_window import UltronWindow
+
+PROMPT_LOCK = threading.Lock()
+VK_CONTROL = 0x11
+VK_Y = 0x59
+
+
+class PromptWorker(QThread):
+    succeeded = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, prompt: str) -> None:
+        super().__init__()
+        self.prompt = prompt
+
+    def run(self) -> None:
+        try:
+            # Voice and typed missions share conversation memory, so serialize them.
+            with PROMPT_LOCK:
+                response = handle_prompt(self.prompt)
+            self.succeeded.emit(response or "I didn't get a response for that request.")
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class VoiceRuntime(QThread):
+    heard = Signal(str)
+    answered = Signal(str)
+    status = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stop_event = threading.Event()
+        self._active_stop: threading.Event | None = None
+        self._lock = threading.Lock()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        self.interrupt()
+
+    def interrupt(self) -> None:
+        with self._lock:
+            active = self._active_stop
+        if active is not None:
+            active.set()
+
+    def _set_active(self, event: threading.Event | None) -> None:
+        with self._lock:
+            self._active_stop = event
+
+    def _interrupt_loop(self) -> None:
+        was_down = False
+        while not self.stop_event.is_set():
+            try:
+                down = bool(
+                    ctypes.windll.user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
+                    and ctypes.windll.user32.GetAsyncKeyState(VK_Y) & 0x8000
+                )
+                if down and not was_down:
+                    self.interrupt()
+                was_down = down
+            except Exception:
+                return
+            time.sleep(0.035)
+
+    def run(self) -> None:
+        try:
+            from voice import listen_once, load_voice_models, speak
+            self.status.emit("LOADING VOICE MODEL")
+            load_voice_models()
+        except Exception as exc:
+            self.status.emit(f"VOICE ERROR: {exc}")
+            return
+
+        threading.Thread(
+            target=self._interrupt_loop,
+            name="ultron-interrupt-monitor",
+            daemon=True,
+        ).start()
+
+        while not self.stop_event.is_set():
+            listen_stop = threading.Event()
+            self._set_active(listen_stop)
+            self.status.emit("LISTENING")
+            try:
+                prompt = listen_once(stop_event=listen_stop)
+            except Exception as exc:
+                self.status.emit(f"VOICE ERROR: {exc}")
+                if self.stop_event.wait(2.0):
+                    break
+                continue
+            finally:
+                self._set_active(None)
+
+            if self.stop_event.is_set():
+                break
+            if not prompt or not prompt.strip():
+                continue
+
+            prompt = prompt.strip()
+            self.heard.emit(prompt)
+            self.status.emit("PROCESSING VOICE")
+            try:
+                with PROMPT_LOCK:
+                    response = handle_prompt(prompt)
+            except Exception as exc:
+                self.status.emit(f"AGENT ERROR: {exc}")
+                continue
+
+            if not response or not response.strip():
+                continue
+            self.answered.emit(response.strip())
+            self.status.emit("SPEAKING")
+
+            speech_stop = threading.Event()
+            self._set_active(speech_stop)
+            try:
+                speak(response, stop_event=speech_stop)
+            except Exception as exc:
+                self.status.emit(f"TTS ERROR: {exc}")
+            finally:
+                self._set_active(None)
+
+            if self.stop_event.wait(0.35):
+                break
+
+
+class UltronApplication:
+    def __init__(self) -> None:
+        self.window = UltronWindow()
+        self.voice = VoiceRuntime()
+        self.workers: set[PromptWorker] = set()
+
+        self.window.prompt_requested.connect(self.submit_prompt)
+        self.voice.heard.connect(lambda prompt: self.window.add_message("user", prompt))
+        self.voice.answered.connect(lambda response: self.window.add_message("assistant", response))
+        self.voice.status.connect(self.window.set_voice_status)
+
+        self.token_timer = QTimer()
+        self.token_timer.timeout.connect(self.update_tokens)
+        self.token_timer.start(1000)
+
+    def update_tokens(self) -> None:
+        snapshot = token_state()
+        self.window.set_tokens(snapshot.remaining_tokens)
+
+    def submit_prompt(self, prompt: str) -> None:
+        self.window.add_message("user", prompt)
+        self.window.set_busy(True)
+        self.window.set_voice_status("TEXT MISSION")
+        worker = PromptWorker(prompt)
+        self.workers.add(worker)
+        worker.succeeded.connect(self.on_success)
+        worker.failed.connect(self.on_failure)
+        worker.finished.connect(lambda w=worker: self._release_worker(w))
+        worker.start()
+
+    def on_success(self, response: str) -> None:
+        self.window.add_message("assistant", response)
+        self.window.set_busy(False)
+        self.window.set_voice_status("READY")
+
+    def on_failure(self, error: str) -> None:
+        self.window.add_message("error", error)
+        self.window.set_busy(False)
+        self.window.set_voice_status("AGENT ERROR")
+
+    def _release_worker(self, worker: PromptWorker) -> None:
+        self.workers.discard(worker)
+        worker.deleteLater()
+
+    def run(self) -> int:
+        self.window.show()
+        self.voice.start()
+        code = QApplication.instance().exec()
+        self.voice.stop()
+        if self.voice.isRunning():
+            self.voice.wait(3000)
+        for worker in list(self.workers):
+            if worker.isRunning():
+                worker.wait(1000)
+        return code
+
+
+def main() -> int:
+    app = QApplication.instance() or QApplication([])
+    app.setApplicationName("ULTRON")
+    app.setOrganizationName("ULTRON")
+    application = UltronApplication()
+    return application.run()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
