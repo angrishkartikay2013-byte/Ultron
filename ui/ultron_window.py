@@ -443,7 +443,7 @@ class UltronWindow(QWidget):
     def show_cortex(self) -> None:
         self.stack.setCurrentWidget(self.cortex)
         if not self.history:
-            self.cortex.add_message(
+            self.add_message(
                 "assistant",
                 "Neural link established. I’m ULTRON. Tell me what you want done, and I’ll use the available tools when appropriate."
             )
