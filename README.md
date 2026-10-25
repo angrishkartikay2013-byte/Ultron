@@ -32,6 +32,10 @@ The V2 agency loop uses Ollama's native function/tool-calling API. Ollama docume
 - Minimal token-left HUD
 - Local-first model and voice assets
 
+## Interface
+
+Run `uv run ultron.py`. The main window uses a dark instrument-panel HUD with a teal circular core and orange indicators. Click the core to open the neural conversation view. Text requests use the existing agency/tool-execution backend; the existing voice runtime stays available. The target Windows machine still needs a local launch test.
+
 ## Run
 
 From the repository root:
@@ -68,7 +72,7 @@ ULTRON V2 is considered feature-complete in the source tree when the following a
 Local hardware validation is still required on the target Windows machine after pulling the release commit.
 
 
-## GENESIS ecosystem
+## ULTRON ecosystem
 
 ULTRON now has an explicit external ecosystem registry in `ecosystem/components.json` and a coworker registry in `ecosystem/agents.json`.
 
