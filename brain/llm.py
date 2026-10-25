@@ -18,7 +18,7 @@ OLLAMA_MODELS = os.getenv("OLLAMA_MODELS", r"E:\ULTRON\models")
 OLLAMA_EXE = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
 CPU_THREADS = int(os.getenv("ULTRON_CPU_THREADS", str(max(2, min(4, os.cpu_count() or 4)))))
 
-SYSTEM_PROMPT = """You are ULTRON GENESIS, a local voice-first personal desktop AI assistant.
+SYSTEM_PROMPT = """You are ULTRON, a local voice-first personal desktop AI assistant.
 You are part of a larger agent system. Speak naturally, confidently, and conversationally, like a sharp human assistant.
 Treat the conversation as continuous; remember names, topics, prior decisions, and what the user just said.
 You may receive speech transcriptions, typed text, or results from desktop tools. Treat each as context, not as a canned command syntax.
