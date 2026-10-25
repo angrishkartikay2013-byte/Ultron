@@ -43,7 +43,7 @@ def _ecosystem_status() -> str:
 
 
 def main() -> int:
-    print("ULTRON GENESIS DIAGNOSTICS")
+    print("ULTRON DIAGNOSTICS")
     print("=" * 46)
 
     checks = [
