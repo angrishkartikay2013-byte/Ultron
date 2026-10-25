@@ -427,6 +427,204 @@ def stream_chat(
         response.close()
 
 
+def provider_status() -> str:
+    """Describe the agent provider selected by environment variables."""
+    provider = os.getenv("ULTRON_PROVIDER", "auto").strip().lower()
+    key_present = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    if provider == "auto":
+        return "OpenRouter (configured)" if key_present else "Ollama (local fallback)"
+    if provider == "openrouter":
+        return "OpenRouter (configured)" if key_present else "OpenRouter (API key missing)"
+    if provider in {"ollama", "local"}:
+        return "Ollama (local)"
+    return f"Unknown provider setting: {provider}"
+
+
+def _selected_agent_provider() -> str:
+    provider = os.getenv("ULTRON_PROVIDER", "auto").strip().lower()
+    if provider == "auto":
+        return "openrouter" if os.getenv("OPENROUTER_API_KEY", "").strip() else "ollama"
+    if provider in {"ollama", "local"}:
+        return "ollama"
+    if provider == "openrouter":
+        if not os.getenv("OPENROUTER_API_KEY", "").strip():
+            raise RuntimeError(
+                "ULTRON_PROVIDER is set to openrouter, but OPENROUTER_API_KEY is not set. "
+                "Add the key to your Windows user environment variables and restart ULTRON."
+            )
+        return "openrouter"
+    raise RuntimeError(
+        f"Unknown ULTRON_PROVIDER={provider!r}. Choose auto, openrouter, or ollama."
+    )
+
+
+def _openrouter_messages(
+    messages: list[dict[str, Any]],
+    system: str,
+) -> list[dict[str, Any]]:
+    """Translate the agent loop's Ollama-shaped messages into OpenAI-compatible messages."""
+    result: list[dict[str, Any]] = [{"role": "system", "content": system}]
+    pending_calls: dict[str, list[str]] = {}
+    synthetic_counter = 0
+
+    for message in messages:
+        role = str(message.get("role") or "user")
+        content = message.get("content", "")
+
+        if role == "assistant" and message.get("tool_calls"):
+            converted_calls: list[dict[str, Any]] = []
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") or {}
+                name = str(function.get("name") or "unknown")
+                arguments = function.get("arguments", {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                if not isinstance(arguments, dict):
+                    arguments = {}
+                call_id = str(call.get("id") or f"ultron_call_{len(result)}_{len(converted_calls)}")
+                pending_calls.setdefault(name, []).append(call_id)
+                converted_calls.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(arguments, ensure_ascii=False),
+                    },
+                })
+            result.append({
+                "role": "assistant",
+                "content": content or None,
+                "tool_calls": converted_calls,
+            })
+            continue
+
+        if role == "tool":
+            name = str(message.get("tool_name") or message.get("name") or "unknown")
+            call_id = message.get("tool_call_id")
+            if not call_id:
+                candidates = pending_calls.get(name, [])
+                if candidates:
+                    call_id = candidates.pop(0)
+                else:
+                    synthetic_counter += 1
+                    call_id = f"ultron_tool_result_{synthetic_counter}"
+            result.append({
+                "role": "tool",
+                "tool_call_id": str(call_id),
+                "name": name,
+                "content": str(content),
+            })
+            continue
+
+        if role in {"user", "assistant", "system"}:
+            result.append({"role": role, "content": content})
+        else:
+            result.append({"role": "user", "content": str(content)})
+
+    return result
+
+
+def _openrouter_chat_raw(
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None,
+    timeout: int,
+    system_extra: str,
+    max_output_tokens: int,
+    num_ctx: int,
+) -> dict[str, Any]:
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is missing.")
+
+    selected_model = os.getenv("ULTRON_OPENROUTER_MODEL", "openrouter/free").strip()
+    if not selected_model:
+        selected_model = "openrouter/free"
+
+    system = SYSTEM_PROMPT
+    if system_extra.strip():
+        system += "\n\n" + system_extra.strip()
+
+    payload: dict[str, Any] = {
+        "model": selected_model,
+        "messages": _openrouter_messages(messages, system),
+        "max_tokens": max(1, int(max_output_tokens)),
+        "stream": False,
+    }
+    if tools:
+        payload["tools"] = tools
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "ULTRON",
+    }
+    response = _SESSION.post(
+        os.getenv("ULTRON_OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions"),
+        headers=headers,
+        json=payload,
+        timeout=timeout,
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        # Avoid echoing request headers or the secret key in any error text.
+        body = response.text[:1200]
+        raise RuntimeError(
+            f"OpenRouter request failed ({response.status_code}). "
+            f"Check the API key, model availability and free-tier limits. Details: {body}"
+        ) from exc
+
+    body = response.json()
+    choices = body.get("choices") or []
+    if not choices or not isinstance(choices[0].get("message"), dict):
+        raise RuntimeError("OpenRouter returned no chat message.")
+
+    remote_message = choices[0]["message"]
+    normalized_calls: list[dict[str, Any]] = []
+    for call in remote_message.get("tool_calls") or []:
+        function = call.get("function") or {}
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        normalized_calls.append({
+            "id": str(call.get("id") or f"ultron_call_{len(normalized_calls)}"),
+            "type": "function",
+            "function": {
+                "name": str(function.get("name") or "unknown"),
+                "arguments": arguments,
+            },
+        })
+
+    usage = body.get("usage") or {}
+    try:
+        from runtime.token_state import update as update_token_state
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        output_tokens = int(usage.get("completion_tokens") or 0)
+        update_token_state(
+            model=str(body.get("model") or selected_model),
+            context_limit=max(0, int(num_ctx)),
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+        )
+    except (ImportError, TypeError, ValueError):
+        pass
+
+    return {
+        "role": "assistant",
+        "content": str(remote_message.get("content") or ""),
+        "tool_calls": normalized_calls,
+    }
+
+
 def chat_raw(
     messages: list[dict[str, Any]],
     *,
@@ -437,7 +635,17 @@ def chat_raw(
     max_output_tokens: int = 256,
     num_ctx: int = 2048,
 ) -> dict[str, Any]:
-    """Call Ollama's native chat API and preserve tool_calls in the response."""
+    """Call the selected agent provider and preserve native tool calls."""
+    if _selected_agent_provider() == "openrouter":
+        return _openrouter_chat_raw(
+            messages,
+            tools=tools,
+            timeout=timeout,
+            system_extra=system_extra,
+            max_output_tokens=max_output_tokens,
+            num_ctx=num_ctx,
+        )
+
     selected_model = choose_ready_model(model or FAST_MODEL)
     effective_output, effective_ctx = _effective_limits(
         selected_model,
@@ -467,14 +675,10 @@ def chat_raw(
 
     response = _SESSION.post(URL, json=payload, timeout=timeout)
     response.raise_for_status()
-
     body = response.json()
 
-    # Ollama reports prompt/eval token counts on completed chat responses.
-    # Keep the last completed call visible in the minimal token meter.
     try:
         from runtime.token_state import update as update_token_state
-
         update_token_state(
             model=selected_model,
             context_limit=effective_ctx,
