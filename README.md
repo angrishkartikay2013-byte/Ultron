@@ -1,6 +1,6 @@
-# ULTRON GENESIS
+# ULTRON
 
-ULTRON GENESIS is a local, voice-first Windows AI assistant designed as an agent system rather than a chatbot wrapped in a UI.
+ULTRON is a local, voice-first Windows AI assistant designed as an agent system rather than a chatbot wrapped in a UI.
 
 ## V2 architecture
 
@@ -40,7 +40,7 @@ From the repository root:
 
 `uv run diagnostics.py`
 
-`uv run genesis.py`
+`uv run ultron.py`
 
 ## Model setup
 
@@ -48,7 +48,7 @@ Set `ULTRON_AGENT_MODEL` to test another compatible Ollama model. Llama 3.1 is a
 
 ## Repository strategy
 
-The assistant remains in this repository. The separate `llm` repository is reserved for the custom C++ LLM engine.
+The ULTRON desktop assistant remains in this repository. The separate `llm` repository is reserved for the custom C++ LLM engine.
 
 ## V2 completion criteria
 
@@ -70,7 +70,7 @@ Local hardware validation is still required on the target Windows machine after 
 
 ## GENESIS ecosystem
 
-ULTRON GENESIS now has an explicit external ecosystem registry in `ecosystem/components.json` and a coworker registry in `ecosystem/agents.json`.
+ULTRON now has an explicit external ecosystem registry in `ecosystem/components.json` and a coworker registry in `ecosystem/agents.json`.
 
 The ecosystem is designed as a set of isolated capabilities around the existing ULTRON core:
 
@@ -89,7 +89,7 @@ The ecosystem is designed as a set of isolated capabilities around the existing 
 - **Windows fallback automation:** pywinauto
 - **Optional voice activity detection:** Silero VAD
 
-Large frameworks and model weights are intentionally kept outside the ULTRON source tree. Bootstrap targets `E:\\Titan\\repos`, isolated environments live under `E:\\Titan\\envs`, and caches are redirected to E:.
+Large frameworks and model weights are intentionally kept outside the ULTRON source tree. Bootstrap targets `E:\\ULTRON\\external\\repos`, isolated environments live under `E:\\ULTRON\\external\\envs`, and caches are redirected to E:.
 
 ### Ecosystem setup
 
@@ -117,10 +117,10 @@ Run diagnostics after setup:
 
 ```powershell
 uv run diagnostics.py
-uv run genesis.py
+uv run ultron.py
 ```
 
-The separate `angrishkartikay2013-byte/llm` repository remains the custom C++ LLM engine; ULTRON GENESIS is the desktop agent that can eventually use it as another local model backend.
+The separate `angrishkartikay2013-byte/llm` repository remains the custom C++ LLM engine; ULTRON is the desktop agent that can eventually use it as another local model backend.
 
 
 ## Runtime-integrated ecosystem
@@ -133,7 +133,7 @@ Run:
 uv sync
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_ecosystem.ps1 -Everything -WithEnvironments
 uv run diagnostics.py
-uv run genesis.py
+uv run ultron.py
 ```
 
 Browser Use has native Ollama support, so the isolated browser worker can use ULTRON's local model stack without a cloud API key. The Browser Use project currently documents Python 3.11+ and local Ollama support.
